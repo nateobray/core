@@ -5,9 +5,9 @@ use Psr\Log\AbstractLogger;
 use Psr\Log\InvalidArgumentException;
 use Psr\Log\LogLevel;
 
-class oCoreProjectEnum {
-    const ODBO = 'ODBO';
-    const OOBJECT = 'OObject';
+class CoreProjectEnum {
+    const DBO = 'DBO';
+    const OBJ = 'Obj';
 }
 
 if (!class_exists( 'obray\oObject' )) { die(); }
