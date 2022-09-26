@@ -8,7 +8,6 @@ namespace obray\core\encoders;
 
 Class ErrorEncoder extends JSONEncoder
 {
-
     /**
      * returns the class property that if found will envoke
      * the encoder
@@ -32,7 +31,11 @@ Class ErrorEncoder extends JSONEncoder
         $obj = new \stdClass();
         if (!empty($data->errors)) {
             $obj->errors = $data->errors;
+        } else {
+            $obj->code = $data->getCode();
+            $obj->error = $data->getMessage();
         }
+        
         $obj->runtime = (microtime(true) - $start_time) * 1000;
         $json = json_encode($obj, JSON_PRETTY_PRINT | JSON_NUMERIC_CHECK);
         if ($json === false) {
@@ -45,7 +48,6 @@ Class ErrorEncoder extends JSONEncoder
             print_r($obj->errors);
         }
     }
-
 }
 
 ?>

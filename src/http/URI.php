@@ -87,7 +87,7 @@ class URI implements UriInterface
     public function getAuthority(): string
     {
         $authority = $this->host;
-        if(!empty($this->getAuthority())) $authority = $this->getAuthority() . '@' . $authority;
+        if(!empty($this->getUserInfo())) $authority = $this->getUserInfo() . '@' . $authority;
         if(!empty($this->port)) $authority .= ':' . $this->port;
         return $authority;
     }
@@ -425,6 +425,7 @@ class URI implements UriInterface
         } else {
             $uri .= str_replace('//', '', $this->path);
         }
+        if(!empty($this->query)) $uri .= '?' . $this->query;
         return $uri;
     }
 }

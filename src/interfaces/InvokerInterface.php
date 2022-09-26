@@ -6,6 +6,8 @@
 
 namespace obray\core\interfaces;
 
+use obray\core\http\ServerRequest;
+
 /**
  * Describes the interface of an obray invoker
  */
@@ -20,5 +22,5 @@ interface InvokerInterface
          * @return mixed whatever is chose by implementer.
          */
 
-        public function invoke($object, $path, $parameters=[]);
+        public function invoke(ServerRequest $serverRequest, $object, $path, $parameters=[]);
 }

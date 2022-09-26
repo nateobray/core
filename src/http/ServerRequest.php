@@ -1,9 +1,11 @@
 <?php
 namespace obray\core\http;
 
+use JsonSerializable;
+use obray\core\exceptions\HTTPException;
 use Psr\Http\Message\ServerRequestInterface;
 
-class ServerRequest extends Request implements ServerRequestInterface
+class ServerRequest extends Request implements ServerRequestInterface, JsonSerializable
 {
     private array $cookies;
     private array $server;
@@ -24,7 +26,7 @@ class ServerRequest extends Request implements ServerRequestInterface
         } else {
             $uri = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER["REQUEST_URI"];
             $method = $_SERVER['REQUEST_METHOD'];
-            $this->params = $_GET;
+            $this->params = array_merge($_GET, $_POST);
             $this->cookies = $_COOKIE;
         }
         $headers = $this->getServerHeaders();
@@ -118,5 +120,40 @@ class ServerRequest extends Request implements ServerRequestInterface
     public function withoutAttribute($name)
     {
 
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        $obj = new \stdClass();
+        $obj->method = $this->getMethod();
+        $obj->version = $this->getProtocolVersion();
+        $obj->uri = (string)$this->getUri();
+        $obj->headers = $this->getHeaders();
+        // attach cookie
+        $cookie = $this->getCookieParams();
+        if(!empty($cookie)) $obj->cookie = $cookie;
+        // attach params
+        $params = $this->getQueryParams();
+        if(!empty($params)) $obj->params = $params;
+        // attach body
+        $body = $this->getBody();
+        if(!empty($body)) $obj->body = $body;
+        return $obj;
+    }
+
+    public static function createRequest()
+    {
+        try {
+             
+            if(empty($_SERVER['REQUEST_METHOD']) && (PHP_SAPI === 'cli' || !empty($_SERVER['argv'])) ){
+                $method = 'CONSOLE';
+            } else {
+                $method = $_SERVER['REQUEST_METHOD'];
+            }
+            $requestType = '\\obray\\core\\http\\requests\\' . strtoupper($method) . 'Request';
+            return new $requestType();
+        } catch (\Exception $e){
+            throw new HTTPException(StatusCode::REASONS[StatusCode::METHOD_NOT_ALLOWED], StatusCode::METHOD_NOT_ALLOWED);
+        }
     }
 }

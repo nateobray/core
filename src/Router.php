@@ -7,7 +7,6 @@
 namespace obray\core;
 
 use obray\core\exceptions\ClassMethodNotFound;
-use obray\core\exceptions\ClassNotFound;
 use obray\core\exceptions\HTTPException;
 use obray\core\http\Method;
 use obray\core\http\Response;
@@ -31,6 +30,7 @@ Class Router
     private string $startingPath;
     private EncoderInterface $encoder;
     private PermissionsInterface $permHandler;
+    private ServerRequest $ServerRequest;
     
     /**
      * The constructor take a a factory, invoker, and container.  Optonall debug mode is also set in
@@ -68,7 +68,7 @@ Class Router
     public function route($path = ''): never
     {
         // generate our server request
-        $this->ServerRequest = new ServerRequest();
+        $this->ServerRequest = ServerRequest::createRequest();
         // generate out path array to use to search
         $path_array = $this->ServerRequest->getExplodedPath();
 
@@ -146,9 +146,13 @@ Class Router
 
         // setup path to controller class
         $object = array_pop($path_array);
-        $path = 'c' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object) ;
+        $path = 'c\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object) ;
+        if(empty($path_array)){
+            $path = 'c\\' . 'Index';
+            $method = $object;
+        }
         $index_path = 'c\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '')  . (!empty($object)?$object.'\\':'') . 'Index' ;
-
+        
         // check if path to controller exists, if so create object
         if(class_exists('\\'.$path)) {
             $path_array = explode('\\', $path);
@@ -171,11 +175,11 @@ Class Router
             }
             return $obj;
         
-        // if unable to objects specified by either path, throw exception
+        // if unable to find objects specified by either path, throw exception
         } else {
             $remaining[] = $object;
             if( empty($path_array) ){
-                throw new ClassNotFound("Path not found (".$this->startingPath.").",404);
+                throw new HTTPException("Path not found (".$this->startingPath.").", 404);
             }
         }
         // recursively search path for controller
@@ -195,7 +199,7 @@ Class Router
      * 
      * @throws \obray\core\exceptions\ClassNotFound
      */
-    private function make($path_array, $params = [], $direct = false, $method = '')
+    private function make($path_array, $params = [], $direct = false, $method = ''): mixed
     {
         $this->startingPath = '\\' . implode('\\',$path_array);
         $obj = $this->factory->make('\\' . implode('\\',$path_array));
@@ -203,7 +207,7 @@ Class Router
         if(!$direct) $this->permHandler->checkPermissions($obj, null);
         if( !empty($method) ){
             $this->invoke($obj, $method, $params, $direct);
-        } else if( method_exists($obj, "index") ){
+        } else {
             $this->invoke($obj, 'index', $params, $direct);
         }
         return $obj;
@@ -218,16 +222,19 @@ Class Router
      * @param array $params Array of the parameters to be passed to our method
      * @param bool $direct Specifies if the is is being called directly (skips permission check)
      * 
+     * @return void
+     * 
      * @throws ClassMethodNotFound 
      */
-    private function invoke($obj, $method, $params, $direct)
+    private function invoke($obj, $method, $params, $direct): void
     {    
+        if($method === 'index') $method = strtolower($this->ServerRequest->getMethod());
         if(method_exists($obj,$method)){
             if(!$direct) $this->permHandler->checkPermissions($obj, $method);
-            $this->invoker->invoke($obj, $method, $params);
+            $this->invoker->invoke($this->ServerRequest, $obj, $method, $params);
             return;
         } else {
-            throw new ClassMethodNotFound("Unable to find method ".$method,404);
+            throw new ClassMethodNotFound("Unable to find method ".$method, 404);
         }
     }
 
@@ -237,8 +244,10 @@ Class Router
      * on this class.
      *
      * @param mixed $obj This is the object to be encoded
+     * 
+     * @return bool
      */
-    private function setEncoderByClassProperty($obj)
+    private function setEncoderByClassProperty($obj): bool
     {
         forEach ($obj as $key => $value) {
             if (array_key_exists($key, $this->encodersByClassProperty)) {
@@ -256,8 +265,10 @@ Class Router
      *
      * @param string $content_type This should be a valid HTTP content type
      * @param string $encoder Stores the object that will be used to encode/decode/out
+     * 
+     * @return void
      */
-    public function addEncoder(EncoderInterface $encoder, string $property, string $content_type)
+    public function addEncoder(EncoderInterface $encoder, string $property, string $content_type): void
     {
         $this->encodersByClassProperty[$property] = $encoder;
         $this->encodersByContentType[$content_type] = $encoder;
@@ -267,8 +278,10 @@ Class Router
      * Sets the encoder to use when either an HTTPException or Exceptionis caught
      * 
      * @param EncoderInterface $encoder
+     * 
+     * @return void
      */
-    public function setErrorEncoder(EncoderInterface $encoder)
+    public function setErrorEncoder(EncoderInterface $encoder): void
     {
         $this->errorEncoder = $encoder;
     }
@@ -277,8 +290,10 @@ Class Router
      * Sets the encoder to use when calling routes from the command line CLI interface
      * 
      * @param EncoderInterface $encoder
+     * 
+     * @return void
      */
-    public function setConsoleEncoder(EncoderInterface $encoder)
+    public function setConsoleEncoder(EncoderInterface $encoder): void
     {
         $this->consoleEncoder = $encoder;
     }
@@ -287,9 +302,12 @@ Class Router
      * Set the permissions handler which is used to check permissions on objects and function
      * 
      * @param PermissionsInterface $handler The permissions handler
+     * 
+     * @return void
      */
-    public function setCheckPermissionsHandler(PermissionsInterface $handler)
+    public function setCheckPermissionsHandler(PermissionsInterface $handler): void
     {
         $this->permHandler = $handler;
     }
+
 }

@@ -26,7 +26,7 @@ class Message implements MessageInterface
     public function __construct(array $headers = [], string $body = null, $version = '1.1')
     {
         $this->version = $version;
-        $this->headers = $headers;
+        $this->headers = array_change_key_case($headers, CASE_LOWER);
         if(!empty($body)){
             $this->body = new Body($body);
         }
@@ -224,7 +224,7 @@ class Message implements MessageInterface
      */
     public function getBody()
     {
-        return $this->body;
+        return $this->body??'';
     }
 
     /**

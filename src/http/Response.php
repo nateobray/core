@@ -88,6 +88,10 @@ class Response extends Message implements ResponseInterface
 
     public function out()
     {
+        header("HTTP/" . $this->getProtocolVersion() . " " . $this->getStatusCode() . " " . StatusCode::REASONS[$this->getStatusCode()]);
+        forEach($this->getheaders() as $key => $header){
+            header($this->getHeaderLine($key));
+        }
         echo $this->getBody()->getContents();
     }
 }
