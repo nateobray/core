@@ -1,7 +1,7 @@
 <?php
 namespace obray\core\http;
 
-class Methods
+class Method
 {
     const GET = 'GET';
     const HEAD = 'HEAD';
@@ -12,4 +12,6 @@ class Methods
     const OPTIONS = 'OPTIONS';
     const TRACE = 'TRACE';
     const PATCH = 'PATCH';
+    // custom method
+    const CONSOLE = 'CONSOLE';
 }

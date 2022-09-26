@@ -2,6 +2,7 @@
 
 namespace obray\core\encoders;
 
+use obray\core\Helpers;
 use obray\core\interfaces\EncoderInterface;
 
 /**
@@ -66,13 +67,13 @@ Class ConsoleEncoder implements EncoderInterface
      * 
      * @param mixed $data The data to be displayed
      * 
-     * @return null
+     * @return never
      */
     public function out($data)
     {
-        print_r($data);
+        Helpers::console("%s", "\n****** CONSOLE RESPONSE (" . date('Y-m-d H:i:s') . ") ******\n\n", "YellowBold");
+        Helpers::console($data);
+        Helpers::console("\n");
+        exit();
     }
-
 }
-
-?>

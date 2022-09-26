@@ -6,32 +6,42 @@
 
 namespace obray\core;
 
+use obray\core\exceptions\ClassMethodNotFound;
+use obray\core\exceptions\ClassNotFound;
+use obray\core\exceptions\HTTPException;
+use obray\core\http\Method;
+use obray\core\http\Response;
+use obray\core\http\ServerRequest;
+use obray\core\http\StatusCode;
+use obray\core\interfaces\EncoderInterface;
 use obray\core\interfaces\FactoryInterface;
 use obray\core\interfaces\InvokerInterface;
+use obray\core\interfaces\PermissionsInterface;
 use Psr\Container\ContainerInterface;
 
 /**
  * This class handles incoming HTTP requests by routing them to the
- * associated object and then providing the response.
+ * associated class/function and outputing the response.
  */
-Class Router extends Obj
+Class Router
 {
-    private $status_code = 200;
-    private $content_type = "application/json";
-    private $start_time = 0;
-    private $encodersByClassProperty = [];
-    private $encodersByContentType = [];
-    private $encoder;
-
+    private float $start_time = 0;
+    private array $encodersByClassProperty = [];
+    private array $encodersByContentType = [];
+    private string $startingPath;
+    private EncoderInterface $encoder;
+    private PermissionsInterface $permHandler;
+    
     /**
-     * The constructor take a a factory, invoker, and container.  Debug mode is also set in
+     * The constructor take a a factory, invoker, and container.  Optonall debug mode is also set in
      * the constructor.
      *
      * @param \obray\oFactoryInterface $factory Takes a factory interface
      * @param \obray\oInvokerInterface $invoker Takes an invoker interface
      * @param \Psr\Container\ContainerInterface $container Variable that contains the container
+     * @param bool $debug Debug mode controls some of the error output (more detailed in debug mode)
+     * @param int $start_time Optionally specify the time that you want to use to determine runtime
      */
-
     public function __construct(
         FactoryInterface $factory,
         InvokerInterface $invoker,
@@ -44,73 +54,181 @@ Class Router extends Obj
         $this->invoker = $invoker;
         $this->container = $container;
         $this->debug_mode = $debug;
-        $this->mode = "http";
     }
 
     /**
-     * This function is used to route an incoming URL to the associated object and formulates
+     * This function is used to route an incoming URI to the associated object and formulates
      * the corresponding response.
      *
-     * @param string $path This is the path to the object, usually passed from a URL, but could also come from the console
-     * @param array $params This is a keyed array of parameters we ultimately want to pass to a function
-     * @param bool $direct Specifies if this is a direct calls (all permissions), or remote (specified permissions)
+     * @param string $path This is the path to the object, usually passed from a URI, but could also 
+     * come from the console argument
+     * 
+     * @return never
      */
-
-    public function route($path, $params = array(), $direct = false)
+    public function route($path = ''): never
     {
-        // conslidate all POST and GET into params
-        $this->consolidateParams($params);
-        // set the mode
-        if (PHP_SAPI === 'cli') {
-            $this->mode = 'console';
-        }
-        
+        // generate our server request
+        $this->ServerRequest = new ServerRequest();
+        // generate out path array to use to search
+        $path_array = $this->ServerRequest->getExplodedPath();
+
         // attempt to route the request with the set factory, invoker, and container
+        $code = StatusCode::OK;
         try {
-            $obj = parent::route($path, $params, $direct);
+            // if we have an empty path_array, default to controller index path
+            if( empty($path_array) ) $path_array[] = 'Index';
+            // use the factory and invoker to create an object invoke its methods
+            $this->startingPath = (string)$this->ServerRequest->getUri()->getPath();
+            $obj = $this->searchForController($path_array, $this->ServerRequest->getQueryParams());
+            if(method_exists($obj, 'getCode')) $code = $obj->getCode();
+            if($this->ServerRequest->getMethod() === Method::CONSOLE){
+                $this->encoder = new ($this->consoleEncoder)();
+            } else {
+                $this->setEncoderByClassProperty($obj);
+            }
+        } catch (HTTPException $e) {
+            // make our object the exception
+            $obj = $e;
+            // get the status code from the exception
+            $code = $e->getCode();
+            // use the error encoder
+            $this->encoder = $this->errorEncoder;
         } catch (\Exception $e) {
-            $obj = new Obj();
-            $obj->throwError($e->getMessage(), $e->getCode());
-            if ($this->debug_mode) {
-                $obj->throwError($e->getFile(), $e->getCode(), "file");
-                $obj->throwError($e->getLine(), $e->getCode(), "line");
-                $obj->throwError($e->getTrace(), $e->getCode(), "trace");
-            }
-            if(empty($obj->getStatusCode())){
-                $obj->setStatusCode(500);
-            }
+            // make our object the exception
+            $obj = $e;
+            // since we don't know what kind of exception we're dealing with, go with code 500
+            $code = StatusCode::INTERNAL_SERVER_ERROR;
+            // use the error encoder
+            $this->encoder = $this->errorEncoder;
         }
         
-        // prepare output method
-        switch ($this->mode) {
-            case 'http':
-                // set encoder by class property
-                if(!$this->setEncoderByClassProperty($obj)){
-                    $this->setEncoderByContentType($this->content_type);
-		        }
-                // prepare headers for HTTP
-                $this->prepareHTTP($obj);
-                break;
-            case 'console':
-                // prepare for console output
-                $this->prepareConsole($obj);
-                // set encoder by content type
-                $this->setEncoderByContentType($this->content_type);
-                break;
-        }
-        
-        // encode data and output
-        if (!empty($this->encoder)) {
-            $encoded = $this->encoder->encode($obj, $this->start_time);
-            $this->encoder->out($encoded);
-        } else {
+        // at this point if we don't have an encoder, we're going to throw and exception
+        if (empty($this->encoder)) {
             header('Content-Type: text/html' );
             throw new \Exception("Unable to find encoder for this request.");
         }
+        
+        // encode our response with the selected encoder
+        $encoded = $this->encoder->encode($obj, $this->start_time, $this->debug_mode);
+        
+        // output if we're in console
+        if($this->ServerRequest->getMethod() === Method::CONSOLE){
+            $this->encoder->out($encoded);
+            exit();
+        }
+        
+        // output HTTP response
+        $response = new Response($code, [
+            'Content-Type' => $this->encoder->getContentType()
+        ], $encoded);
+        $response->out();
+        exit();
+    }
 
-        // return object
+    /**
+     * Searches recursively for a controller class based on the path_array and then
+     * creates that controller and calls the specified method if any
+     *
+     * @param array $path_array Array containing the path
+     * @param array $params Array containing the parameters to be passed the called method
+     * @param bool $direct Specifies if the is is being called directly (skips permission check)
+     * @param string $method The name of the method to be called on the created object
+     * @param array $remaining An array of the remaining path (useful for dynamic page genration)
+     * @param int $depth The depth of the recursive call.  Currenly has a hardcoded max
+     * 
+     * @return mixed
+     */
+    private function searchForController($path_array, $params = [], $direct = false, $method = '', $remaining = array(), $depth = 0): mixed
+    {
+        if($this->ServerRequest->getMethod() === Method::CONSOLE) $direct = true;
+        // prevent the posibility of an infinite loop (this should not happen, but is here just in case)
+        if( $depth > 20 ){ throw new \Exception("Depth limit for controller search reached.",500); }
+
+        // setup path to controller class
+        $object = array_pop($path_array);
+        $path = 'c' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object) ;
+        $index_path = 'c\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '')  . (!empty($object)?$object.'\\':'') . 'Index' ;
+
+        // check if path to controller exists, if so create object
+        if(class_exists('\\'.$path)) {
+            $path_array = explode('\\', $path);
+            $params["remaining"] = $remaining;
+            try{
+                $obj = $this->make($path_array, $params, $direct, $method);
+            } catch (ClassMethodNotFound $e) {
+                $obj = $this->make($path_array, $params, $direct, '');
+            }
+            return $obj;
+        
+        // check if index path to controller exists, if so create object
+        } else if (class_exists('\\'.$index_path)) {
+            $path_array = explode('\\', $index_path);
+            $params["remaining"] = $remaining;
+            try{
+                $obj = $this->make($path_array, $params, $direct, $method);
+            } catch (ClassMethodNotFound $e) {
+                $obj = $this->make($path_array, $params, $direct, '');
+            }
+            return $obj;
+        
+        // if unable to objects specified by either path, throw exception
+        } else {
+            $remaining[] = $object;
+            if( empty($path_array) ){
+                throw new ClassNotFound("Path not found (".$this->startingPath.").",404);
+            }
+        }
+        // recursively search path for controller
+        return $this->searchForController($path_array, $params, $direct, $object, $remaining, ++$depth);
+    }
+
+    /**
+     * This method creates an object based on the supplied parameters with
+     * the classes factory object
+     *
+     * @param array $path_array Array containing the path
+     * @param array $params Array containing the parameters to be passed the called method
+     * @param bool $direct Specifies if the is is being called directly (skips permission check)
+     * @param string $method The name of the method on the object we want to call
+     * 
+     * @return mixed
+     * 
+     * @throws \obray\core\exceptions\ClassNotFound
+     */
+    private function make($path_array, $params = [], $direct = false, $method = '')
+    {
+        $this->startingPath = '\\' . implode('\\',$path_array);
+        $obj = $this->factory->make('\\' . implode('\\',$path_array));
+        
+        if(!$direct) $this->permHandler->checkPermissions($obj, null);
+        if( !empty($method) ){
+            $this->invoke($obj, $method, $params, $direct);
+        } else if( method_exists($obj, "index") ){
+            $this->invoke($obj, 'index', $params, $direct);
+        }
         return $obj;
+    }
 
+     /**
+     * The invoke method checks permission on the method we want to call and then uses
+     * the class invoker to call the method
+     *
+     * @param mixed $obj The object containing the method we want to call
+     * @param string $method The name of the method on the object we want to call
+     * @param array $params Array of the parameters to be passed to our method
+     * @param bool $direct Specifies if the is is being called directly (skips permission check)
+     * 
+     * @throws ClassMethodNotFound 
+     */
+    private function invoke($obj, $method, $params, $direct)
+    {    
+        if(method_exists($obj,$method)){
+            if(!$direct) $this->permHandler->checkPermissions($obj, $method);
+            $this->invoker->invoke($obj, $method, $params);
+            return;
+        } else {
+            throw new ClassMethodNotFound("Unable to find method ".$method,404);
+        }
     }
 
     /**
@@ -120,33 +238,16 @@ Class Router extends Obj
      *
      * @param mixed $obj This is the object to be encoded
      */
-
     private function setEncoderByClassProperty($obj)
     {
         forEach ($obj as $key => $value) {
             if (array_key_exists($key, $this->encodersByClassProperty)) {
-                $encoder = $this->encodersByClassProperty[$key];
-                $this->encoder = new $encoder();
+                $this->encoder = $this->encodersByClassProperty[$key];
                 $this->content_type = $this->encoder->getContentType();
-		return true;
+		        return true;
             }
         }
-	return false;
-    }
-
-    /**
-     * Sets the encoder by the content type.  The is used exclusively for console output
-     *
-     * @param string $content_type This should be a valid HTTP content type
-     */
-
-    private function setEncoderByContentType($content_type)
-    {
-        if (array_key_exists($content_type, $this->encodersByContentType)) {
-            $encoder = $this->encodersByContentType[$content_type];
-            $this->encoder = new $encoder();
-            $this->content_type = $this->encoder->getContentType();
-        }
+	    return false;
     }
 
     /**
@@ -156,75 +257,39 @@ Class Router extends Obj
      * @param string $content_type This should be a valid HTTP content type
      * @param string $encoder Stores the object that will be used to encode/decode/out
      */
-
-    public function addEncoder($encoder, $property, $content_type)
+    public function addEncoder(EncoderInterface $encoder, string $property, string $content_type)
     {
         $this->encodersByClassProperty[$property] = $encoder;
         $this->encodersByContentType[$content_type] = $encoder;
     }
 
     /**
-     * This function takes the parameters passed in and combines them with
-     * posted data.  I also will decode any incoming json and put it in as
-     * data in the params.
-     *
-     * @param array $params This should contain a keyed list of parameters
+     * Sets the encoder to use when either an HTTPException or Exceptionis caught
+     * 
+     * @param EncoderInterface $encoder
      */
-
-    private function consolidateParams(&$params)
+    public function setErrorEncoder(EncoderInterface $encoder)
     {
-        $php_input = file_get_contents("php://input");
-        if (!empty($php_input) && empty($params['data'])) {
-            if ($_SERVER["CONTENT_TYPE"] === 'application/json') {
-                $params = (array)json_decode($php_input);
-            } else {
-                $params["data"] = $php_input;
-            }
-        }
+        $this->errorEncoder = $encoder;
     }
 
     /**
-     * The pepareHTTP function sets up headers for and HTTP response
-     * back to the client.
-     *
-     * @param mixed $obj This should contain the obj off of which we will formulate a response
+     * Sets the encoder to use when calling routes from the command line CLI interface
+     * 
+     * @param EncoderInterface $encoder
      */
-
-    private function prepareHTTP($obj)
+    public function setConsoleEncoder(EncoderInterface $encoder)
     {
-        $status_codes = include("RouterStatusCodes.php");
-        if ( (method_exists($obj, 'getStatusCode') && $obj->getStatusCode() == 401 && empty($_ENV["AUTHENTICATION_HEADER"])) || (method_exists($obj, 'getStatusCode') && $obj->getStatusCode() == 401 && !empty($_ENV["AUTHENTICATION_HEADER"]) && $_ENV["AUTHENTICATION_HEADER"] == 'true') ) {
-            header('WWW-Authenticate: Basic realm="application"');
-            if (method_exists($obj, "auth")) {
-                $obj->auth();
-            }
-        }
-        
-        if (!headers_sent()) {
-            //if(!empty())
-            header('HTTP/1.1 ' . $obj->getStatusCode() . ' ' . $status_codes[$obj->getStatusCode()]);
-            if ($this->content_type == 'text/table') {
-                $tmp_type = 'text/table';
-                $content_type = 'text/html';
-            }
-
-            header('Content-Type: ' . $this->content_type);
-            if (!empty($tmp_type)) {
-                $this->content_type = $tmp_type;
-            }
-        }
-
+        $this->consoleEncoder = $encoder;
     }
 
     /**
-     * This will prepare for output to console by setting content_type to console
-     *
-     * @param mixed $obj This should contain the obj off of which we will formulate a response
+     * Set the permissions handler which is used to check permissions on objects and function
+     * 
+     * @param PermissionsInterface $handler The permissions handler
      */
-
-    private function prepareConsole($obj)
+    public function setCheckPermissionsHandler(PermissionsInterface $handler)
     {
-        $this->content_type = "console";
+        $this->permHandler = $handler;
     }
-
 }

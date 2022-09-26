@@ -30,7 +30,6 @@ Class ErrorEncoder extends JSONEncoder
     public function encode($data, $start_time)
     {
         $obj = new \stdClass();
-        $obj->object = $data->object;
         if (!empty($data->errors)) {
             $obj->errors = $data->errors;
         }
@@ -40,7 +39,7 @@ Class ErrorEncoder extends JSONEncoder
             $json = json_encode($obj, JSON_PRETTY_PRINT);
         }
         if ($json) {
-            echo $json;
+            return $json;
         } else {
             echo 'There was en error encoding JSON.';
             print_r($obj->errors);

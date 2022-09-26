@@ -40,14 +40,17 @@ Class JSONEncoder implements EncoderInterface
     public function encode($data, $start_time)
     {
         $obj = new \stdClass();
-        $obj->object = $data->object;
         if (isSet($data->data)) {
             $obj->data = $data->data;
         }
         $obj->runtime = (microtime(TRUE) - $start_time)*1000;
         $json = json_encode($obj,JSON_PRETTY_PRINT|JSON_NUMERIC_CHECK);
         if( $json === FALSE ){ $json = json_encode($obj,JSON_PRETTY_PRINT); }
-        if( $json ){ echo $json; } else { echo 'There was en error encoding JSON.'; }
+        if( $json ){ 
+            return $json;
+        } else {
+            throw new \Exception("Error encoding jason.");
+        }
     }
 
     /**

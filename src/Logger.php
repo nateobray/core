@@ -10,8 +10,6 @@ class CoreProjectEnum {
     const OBJ = 'Obj';
 }
 
-if (!class_exists( 'obray\oObject' )) { die(); }
-
 /**
  * Class used for logging/debugging
  */
