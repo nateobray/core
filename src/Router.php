@@ -146,13 +146,14 @@ Class Router
 
         // setup path to controller class
         $object = array_pop($path_array);
-        $path = 'c\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object) ;
+        $obray_path = 'obray\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object);
+        $path = 'controllers\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object) ;
         if(empty($path_array)){
-            $path = 'c\\' . 'Index';
+            $path = 'controllers\\' . 'Index';
             $method = $object;
         }
-        $index_path = 'c\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '')  . (!empty($object)?$object.'\\':'') . 'Index' ;
-        
+        $index_path = 'controllers\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '')  . (!empty($object)?$object.'\\':'') . 'Index' ;
+
         // check if path to controller exists, if so create object
         if(class_exists('\\'.$path)) {
             $path_array = explode('\\', $path);
@@ -174,7 +175,16 @@ Class Router
                 $obj = $this->make($path_array, $params, $direct, '');
             }
             return $obj;
-        
+        } elseif (class_exists('\\' . $obray_path)){
+            $path_array = explode('\\', $obray_path);
+            $params["remaining"] = $remaining;
+            try{
+                $obj = $this->make($path_array, $params, $direct, $method);
+            } catch (ClassMethodNotFound $e) {
+                $obj = $this->make($path_array, $params, $direct, '');
+            }
+            return $obj;
+
         // if unable to find objects specified by either path, throw exception
         } else {
             $remaining[] = $object;
@@ -203,7 +213,7 @@ Class Router
     {
         $this->startingPath = '\\' . implode('\\',$path_array);
         $obj = $this->factory->make('\\' . implode('\\',$path_array));
-        
+
         if(!$direct) $this->permHandler->checkPermissions($obj, null);
         if( !empty($method) ){
             $this->invoke($obj, $method, $params, $direct);
