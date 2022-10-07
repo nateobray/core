@@ -141,13 +141,13 @@ Class Router
     private function searchForController($path_array, $params = [], $direct = false, $method = '', $remaining = array(), $depth = 0): mixed
     {
         if($this->ServerRequest->getMethod() === Method::CONSOLE) $direct = true;
-        // prevent the posibility of an infinite loop (this should not happen, but is here just in case)
+        // prevent the possibility of an infinite loop (this should not happen, but is here just in case)
         if( $depth > 20 ){ throw new \Exception("Depth limit for controller search reached.",500); }
 
         // setup path to controller class
         $object = array_pop($path_array);
         $obray_path = 'obray\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object);
-        $path = 'controllers\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object) ;
+        $path = 'controllers\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object);
         if(empty($path_array)){
             $path = 'controllers\\' . 'Index';
             $method = $object;
@@ -175,6 +175,8 @@ Class Router
                 $obj = $this->make($path_array, $params, $direct, '');
             }
             return $obj;
+        
+        // check if obray/core path exists, if so create the obray/core object
         } elseif (class_exists('\\' . $obray_path)){
             $path_array = explode('\\', $obray_path);
             $params["remaining"] = $remaining;

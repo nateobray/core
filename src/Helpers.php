@@ -58,7 +58,7 @@ class Helpers
         $args = func_get_args();
         if( PHP_SAPI !== 'cli' && empty($args) ) return;
 
-        if( is_array($args[0]) || is_object($args[0]) ) {
+        if( is_array($args[0]) || is_object($args[0]) || $args[0] === null ) {
             print_r($args[0]);
         } else if( count($args) === 3 && $args[1] !== NULL && $args[2] !== NULL ){
             $color = self::COLORS[$args[2]];
