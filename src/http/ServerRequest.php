@@ -11,15 +11,15 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
     private array $server;
     private array $params;
 
-    public function __construct($path = '')
+    public function __construct($path = '', $params = [])
     {
         $method = Method::GET;
         if(PHP_SAPI === 'cli' || !empty($_SERVER['argv'])){
             if(empty($_SERVER['argv'][1])) throw new \Exception("Console dedected, but not path specified.");
             $uri = $_SERVER['argv'][1];
+            if(!empty($path)) $uri = $path;
             $method = 'CONSOLE';
-            $this->params = [];
-            print_r($uri . "\n");
+            $this->params = $params;
             $components = parse_url($uri);
             if(!empty($components['query'])) parse_str($components['query'], $this->params);
             $this->cookies = [];
@@ -141,7 +141,7 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
         return $obj;
     }
 
-    public static function createRequest()
+    public static function createRequest(string $path = '', array $params = [])
     {
         try {
              
@@ -151,7 +151,7 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
                 $method = $_SERVER['REQUEST_METHOD'];
             }
             $requestType = '\\obray\\core\\http\\requests\\' . strtoupper($method) . 'Request';
-            return new $requestType();
+            return new $requestType($path, $params);
         } catch (\Exception $e){
             throw new HTTPException(StatusCode::REASONS[StatusCode::METHOD_NOT_ALLOWED], StatusCode::METHOD_NOT_ALLOWED);
         }

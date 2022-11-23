@@ -65,10 +65,10 @@ Class Router
      * 
      * @return never
      */
-    public function route($path = ''): never
+    public function route($path = '', $params = [], bool $repressResponse = false)
     {
         // generate our server request
-        $this->ServerRequest = ServerRequest::createRequest();
+        $this->ServerRequest = ServerRequest::createRequest($path, $params);
         // generate out path array to use to search
         $path_array = $this->ServerRequest->getExplodedPath();
 
@@ -113,16 +113,21 @@ Class Router
         
         // output if we're in console
         if($this->ServerRequest->getMethod() === Method::CONSOLE){
-            $this->encoder->out($encoded);
-            exit();
+            if(!$repressResponse){
+                $this->encoder->out($encoded);
+                exit();
+            }
+            return;
         }
         
         // output HTTP response
         $response = new Response($code, [
             'Content-Type' => $this->encoder->getContentType()
         ], $encoded);
-        $response->out();
-        exit();
+        if(!$repressResponse){
+            $response->out();
+            exit();
+        }
     }
 
     /**
