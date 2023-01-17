@@ -1,5 +1,4 @@
 <?php
-
 namespace obray\core\encoders;
 
 use obray\core\interfaces\EncoderInterface;
@@ -67,5 +66,3 @@ Class HTMLEncoder implements EncoderInterface
     }
 
 }
-
-?>

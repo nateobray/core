@@ -27,11 +27,29 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
             $uri = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER["REQUEST_URI"];
             $method = $_SERVER['REQUEST_METHOD'];
             $this->params = array_merge($_GET, $_POST);
+            switch(strtolower($method))
+            {
+                case 'put': $this->parseRequest($method, $_SERVER["CONTENT_TYPE"]); break;
+                case 'delete': $this->parseRequest($method, $_SERVER["CONTENT_TYPE"]); break;
+            }
             $this->cookies = $_COOKIE;
         }
         $headers = $this->getServerHeaders();
         $this->server = $_SERVER;
         parent::__construct($method, $uri, $headers);
+    }
+
+    private function parseRequest($method, $contentType)
+    {
+        if(strpos($contentType, 'multipart/form-data')){
+            $params = [];
+            parse_str(file_get_contents('php://input'), $params);
+            $this->params = array_merge($this->params, $params);
+        }
+
+        if(strpos($contentType, 'application/x-www-form-urlencoded')){
+
+        }
     }
 
     private function getServerHeaders()

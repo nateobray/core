@@ -1,5 +1,4 @@
 <?php
-
 namespace obray\core\encoders;
 
 use obray\core\interfaces\EncoderInterface;
@@ -10,6 +9,11 @@ use obray\core\interfaces\EncoderInterface;
 
 Class JSONEncoder implements EncoderInterface
 {
+    private bool $numericCheck = true;
+    public function __construct($numericCheck = true)
+    {
+        $this->numericCheck = $numericCheck;
+    }
 
     /**
      * returns the class property that if found will envoke
@@ -44,8 +48,10 @@ Class JSONEncoder implements EncoderInterface
             $obj->data = $data->data;
         }
         $obj->runtime = (microtime(TRUE) - $start_time)*1000;
-        $json = json_encode($obj,JSON_PRETTY_PRINT|JSON_NUMERIC_CHECK);
-        if( $json === FALSE ){ $json = json_encode($obj,JSON_PRETTY_PRINT); }
+        $options = JSON_PRETTY_PRINT;
+        if($this->numericCheck) $options = JSON_NUMERIC_CHECK|JSON_PRETTY_PRINT;
+        $json = json_encode($obj, $options);
+        if( $json === FALSE ) $json = json_encode($obj,JSON_PRETTY_PRINT);
         if( $json ){ 
             return $json;
         } else {
@@ -80,5 +86,3 @@ Class JSONEncoder implements EncoderInterface
     }
 
 }
-
-?>

@@ -36,7 +36,7 @@ Class CSVEncoder implements EncoderInterface
     public function __construct($extension="csv", $separator=",")
     {
         $this->extension = $extension;
-        $this->seperator = $separator;
+        $this->separator = $separator;
     }
 
     /**
@@ -143,5 +143,3 @@ Class CSVEncoder implements EncoderInterface
     }
 
 }
-
-?>

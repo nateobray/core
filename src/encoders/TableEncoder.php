@@ -1,5 +1,4 @@
 <?php
-
 namespace obray\core\encoders;
 
 use obray\core\interfaces\EncoderInterface;
@@ -127,5 +126,3 @@ Class TableEncoder implements EncoderInterface
     }
 
 }
-
-?>

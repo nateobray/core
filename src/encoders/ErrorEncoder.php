@@ -1,5 +1,4 @@
 <?php
-
 namespace obray\core\encoders;
 
 /**
@@ -49,5 +48,3 @@ Class ErrorEncoder extends JSONEncoder
         }
     }
 }
-
-?>
