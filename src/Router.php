@@ -8,6 +8,7 @@ namespace obray\core;
 
 use obray\core\exceptions\ClassMethodNotFound;
 use obray\core\exceptions\HTTPException;
+use obray\core\exceptions\UserLevelException;
 use obray\core\http\Method;
 use obray\core\http\Response;
 use obray\core\http\ServerRequest;
@@ -300,6 +301,9 @@ Class Router
      */
     public function setErrorEncoder(EncoderInterface $encoder): void
     {
+        set_error_handler([$this, 'errorHandler']);
+        register_shutdown_function([Router::class, "fatalHandler"], $encoder, $this->start_time);
+        
         $this->errorEncoder = $encoder;
     }
 
@@ -325,6 +329,70 @@ Class Router
     public function setCheckPermissionsHandler(PermissionsInterface $handler): void
     {
         $this->permHandler = $handler;
+    }
+
+    public function errorHandler($error_level, $error_message, $error_file, $error_line, $error_context=null) 
+    {
+        switch ($error_level) {
+            case E_ERROR:
+            case E_CORE_ERROR:
+            case E_COMPILE_ERROR:
+            case E_PARSE:
+            case E_USER_ERROR:
+            case E_RECOVERABLE_ERROR:
+            case E_WARNING:
+            case E_CORE_WARNING:
+            case E_COMPILE_WARNING:
+            case E_USER_WARNING:
+            case E_NOTICE:
+            case E_USER_NOTICE:
+            case E_STRICT:
+            default:
+        }
+
+        // encode our response with the selected encoder
+        $error = new UserLevelException($error_message, $error_level);
+        $error->setFile($error_file);
+        $error->setLine($error_line);
+        $encoded = $this->errorEncoder->encode($error, null, true);
+        
+        // output HTTP response
+        $response = new Response(500, [
+            'Content-Type' => $this->errorEncoder->getContentType()
+        ], $encoded);
+        $response->out();
+        exit();
+    }
+
+    static public function fatalHandler(EncoderInterface $encoder, $startTime) 
+    {
+        $errfile = "unknown file";
+        $errstr  = "Unknown Error";
+        $errno   = E_CORE_ERROR;
+        $errline = 0;
+
+        $error = error_get_last();
+
+        if($error !== NULL) {
+            $errno   = $error["type"];
+            $errfile = $error["file"];
+            $errline = $error["line"];
+            $errstr  = $error["message"];
+
+            // encode our response with the selected encoder
+            $error = new UserLevelException($errstr, $errno);
+            $error->setFile($errfile);
+            $error->setLine($errline);
+            
+            $encoded = $encoder->encode($error, $startTime, true);
+            
+            // output HTTP response
+            $response = new Response(500, [
+                'Content-Type' => $encoder->getContentType()
+            ], $encoded);
+            $response->out();
+            exit();
+        }
     }
 
 }
