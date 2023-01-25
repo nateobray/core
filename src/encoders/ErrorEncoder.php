@@ -1,6 +1,8 @@
 <?php
 namespace obray\core\encoders;
 
+use obray\core\Helpers;
+
 /**
  * This class is used to invoke or call a method on a specified object
  */
@@ -33,6 +35,16 @@ Class ErrorEncoder extends JSONEncoder
         } else {
             $obj->code = $data->getCode();
             $obj->error = $data->getMessage();
+            if(defined('__IS_PRODUCTION__') && !__IS_PRODUCTION__){
+                $obj->line = $data->getLine();
+                $obj->file = $data->getFile();
+            }
+        }
+
+        $args = func_get_args();
+        if( PHP_SAPI == 'cli' && !empty($args) ) {
+            Helpers::console($obj);
+            exit();
         }
         
         $obj->runtime = (microtime(true) - $start_time) * 1000;
