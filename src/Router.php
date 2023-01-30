@@ -32,6 +32,9 @@ Class Router
     private EncoderInterface $encoder;
     private PermissionsInterface $permHandler;
     private ServerRequest $ServerRequest;
+    private EncoderInterface $errorEncoder;
+    private EncoderInterface $consoleEncoder;
+    protected $content_type;
     
     /**
      * The constructor take a a factory, invoker, and container.  Optonall debug mode is also set in
@@ -354,6 +357,7 @@ Class Router
         $error = new UserLevelException($error_message, $error_level);
         $error->setFile($error_file);
         $error->setLine($error_line);
+        $error->setServerRequest($this->ServerRequest);
         $encoded = $this->errorEncoder->encode($error, null, true);
         
         // output HTTP response
