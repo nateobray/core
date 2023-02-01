@@ -255,7 +255,7 @@ Class Router
             $this->invoker->invoke($this->ServerRequest, $obj, $method, $params);
             return;
         } else {
-            throw new ClassMethodNotFound("Unable to find method ".$method, 404);
+            throw new ClassMethodNotFound("Unable to find method " . $obj::class . '\\' . $method, 404);
         }
     }
 
