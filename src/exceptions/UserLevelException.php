@@ -6,7 +6,7 @@ use obray\core\http\ServerRequest;
 
 Class UserLevelException extends \Exception
 {
-    protected ServerRequest $serverRequest;
+    protected ServerRequest|null $serverRequest = null;
 
     public function appendToMessage(string $textToAppend)
     {
@@ -28,7 +28,7 @@ Class UserLevelException extends \Exception
         $this->serverRequest = $serverRequest;
     }
 
-    public function getServerRequest(): ServerRequest
+    public function getServerRequest(): ServerRequest|null
     {
         return $this->serverRequest;
     }
