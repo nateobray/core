@@ -20,9 +20,14 @@ use obray\core\interfaces\PermissionsInterface;
 use Psr\Container\ContainerInterface;
 
 /**
+ * Router
+ * 
  * This class handles incoming HTTP requests by routing them to the
  * associated class/function and outputing the response.
+ * 
+ * @package obray\core
  */
+
 Class Router
 {
     private float $start_time = 0;
@@ -37,6 +42,8 @@ Class Router
     protected $content_type;
     
     /**
+     * __construct
+     * 
      * The constructor take a a factory, invoker, and container.  Optonall debug mode is also set in
      * the constructor.
      *
