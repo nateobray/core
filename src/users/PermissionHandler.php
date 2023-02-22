@@ -5,6 +5,13 @@ use obray\core\exceptions\PermissionDenied;
 use obray\core\interfaces\PermissionsInterface;
 use obray\sessions\Session;
 
+/**
+ * PermissionHandler
+ * 
+ * This class handles permissions for objects
+ * 
+ * @package obray\users
+ */
 class PermissionHandler implements PermissionsInterface
 {
     private Session $session;

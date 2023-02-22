@@ -2,7 +2,6 @@
 namespace obray\data;
 
 use obray\core\Helpers;
-use obray\data\sql\ForeignKey;
 use obray\data\sql\Index;
 
 class Table

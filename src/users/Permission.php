@@ -6,6 +6,13 @@ use obray\data\types\PrimaryKey;
 use obray\data\types\Text;
 use obray\data\types\Varchar24;
 
+/**
+ * Permission
+ * 
+ * A permission is a permission that a user can have
+ * 
+ * @package obray\users
+ */
 Class Permission extends DBO
 {
 	const TABLE = 'Permissions';

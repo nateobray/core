@@ -6,8 +6,15 @@ use obray\data\types\PrimaryKey;
 use obray\data\types\Text;
 use obray\data\types\Varchar24;
 
+/**
+ * Role
+ * 
+ * A role is a role that a user can have
+ */
+
 Class Role extends DBO
 {
+	// The table name for this DBO
 	const TABLE = 'Roles';
 
 	protected PrimaryKey $col_role_id;

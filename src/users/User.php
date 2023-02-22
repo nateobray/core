@@ -12,6 +12,13 @@ use obray\data\types\TinyInt1UnsignedDefault1;
 use obray\data\types\Varchar64;
 use obray\data\types\Varchar64Nullable;
 
+/**
+ * User
+ * 
+ * A user is a user that can login to the system
+ * 
+ * @package obray\users
+ */
 Class User extends DBO
 {
     const TABLE = 'Users';

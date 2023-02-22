@@ -5,6 +5,13 @@ use obray\data\DBO;
 use obray\data\types\Int11Unsigned;
 use obray\data\types\PrimaryKey;
 
+/**
+ * UserRole
+ * 
+ * A user role is the assignment of a role to a user
+ * 
+ * @package obray\users
+ */
 Class UserRole extends DBO
 {
     const TABLE = 'UserRoles';

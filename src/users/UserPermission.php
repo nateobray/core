@@ -5,6 +5,13 @@ use obray\data\DBO;
 use obray\data\types\Int11Unsigned;
 use obray\data\types\PrimaryKey;
 
+/**
+ * UserPermission
+ * 
+ * A user permission is an assignment of a permission to a user
+ * 
+ * @package obray\users
+ */
 Class UserPermission extends DBO
 {
 	const TABLE = 'UserPermissions';

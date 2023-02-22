@@ -266,7 +266,7 @@ class Statement
     public function runUpdateOnExists(array $params = []): Statement
     {
         // no params to be updated, then nothing to do
-        if(!empty($params)) return $this;
+        if(empty($params)) return $this;
         // get results of the existing statement
         if(empty($this->results)) $this->results = $this->run();
         // if the results are empty simply return the statement
@@ -276,7 +276,7 @@ class Statement
             forEach($params as $key => $value){
                 $result->$key = $value;
             }
-            $this->update($result)->run();
+            (new DataStatement($this->conn))->update($result)->run();
         }
         // return the statement
         return $this;

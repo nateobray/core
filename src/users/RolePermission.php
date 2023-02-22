@@ -5,6 +5,13 @@ use obray\data\DBO;
 use obray\data\types\Int11Unsigned;
 use obray\data\types\PrimaryKey;
 
+/**
+ * RolePermission
+ * 
+ * A role permission is a permission that a role can have
+ * 
+ * @package obray\users
+ */
 Class RolePermission extends DBO
 {
 	const TABLE = 'RolePermissions';
