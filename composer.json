@@ -14,7 +14,7 @@
             "obray\\data\\": "src/data",
             "obray\\containers\\": "src/container",
             "obray\\users\\": "src/users",
-            "obray\\session\\": "src/session"
+            "obray\\sessions\\": "src/sessions"
         }
     }
 }
