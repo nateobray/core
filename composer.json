@@ -9,7 +9,8 @@
     },
     "autoload": {
         "psr-4": {
-            "obray\\core\\": "src"
+            "obray\\core\\": "src",
+            "obray\\data\\": "src/data"
         }
     }
 }
