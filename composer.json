@@ -12,7 +12,8 @@
         "psr-4": {
             "obray\\core\\": "src",
             "obray\\data\\": "src/data",
-            "obray\\containers\\": "src/container"
+            "obray\\containers\\": "src/container",
+            "obray\\users\\": "src/users"
         }
     }
 }
