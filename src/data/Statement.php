@@ -107,6 +107,7 @@ class Statement
      * @param string $class 
      * @return $this 
      */
+
     public function select(string $class): Statement
     {
         $this->action = 'selecting';
@@ -148,6 +149,7 @@ class Statement
      * @param string|null $fromColumn 
      * @return $this 
      */
+
     public function join(string $name, string $toClass, mixed $fromClass=null, string $toColumn=null, string $fromColumn=null): Statement
     {
         $this->from->join($name, $toClass, $fromClass, $toColumn, $fromColumn);
@@ -237,6 +239,7 @@ class Statement
      * @return Statement 
      * @throws Exception 
      */
+
     public function runInsertOnEmpty(DBO $instance): Statement
     {
         // get results of the existing statement
@@ -307,6 +310,7 @@ class Statement
      * @return mixed 
      * @throws Exception 
      */
+
     public function run(string $sql = '', array $values = []): mixed
     {
         // check what action we are performing and call the onBefore lifecycle method
@@ -436,6 +440,7 @@ class Statement
      * @param mixed $arr2 
      * @return array
      */
+
     private function mergeArray($arr1, $arr2): array
     {
         $merged = $arr1;
@@ -506,6 +511,7 @@ class Statement
      * Create a new Querier object.
      * @return Querier 
      */
+    
     private function newQuerier()
     {
         return new Querier($this->conn);

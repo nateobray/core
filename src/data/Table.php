@@ -3,6 +3,7 @@ namespace obray\data;
 
 use obray\core\Helpers;
 use obray\data\sql\Index;
+use obray\data\sql\SQLForeignKey;
 
 class Table
 {
@@ -88,7 +89,7 @@ class Table
         // build Foreign Keys
         if(defined($class . '::FOREIGN_KEYS')){
             forEach($class::FOREIGN_KEYS as $key){
-                $foreign = ForeignKey::createSQL(...$key);
+                $foreign = SQLForeignKey::createSQL(...$key);
                 $keys[] = $foreign[0];
                 $constraints[] = $foreign[1];
             }
