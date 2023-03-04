@@ -273,7 +273,7 @@ class Statement
         // get results of the existing statement
         if(empty($this->results)) $this->results = $this->run();
         // if the results are empty simply return the statement
-        if(empty($this->results)) return $this;
+        if(empty($this->results) || !is_array($this->results)) return $this;
         // if the results are not empty then we need to update the record
         forEach($this->results as $result){
             forEach($params as $key => $value){
