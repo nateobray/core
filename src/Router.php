@@ -161,13 +161,15 @@ Class Router
         if( $depth > 20 ){ throw new \Exception("Depth limit for controller search reached.",500); }
 
         // setup path to controller class
-        $object = array_pop($path_array);
-        $obray_path = 'obray\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object);
-        $path = 'controllers\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object);
         if(empty($path_array)){
             $path = 'controllers\\' . 'Index';
             $method = $object;
+        } else {
+            $object = array_pop($path_array);
+            $obray_path = 'obray\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object);
+            $path = 'controllers\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object);
         }
+        
         $index_path = 'controllers\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '')  . (!empty($object)?$object.'\\':'') . 'Index' ;
 
         // check if path to controller exists, if so create object
