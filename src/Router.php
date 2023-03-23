@@ -163,7 +163,7 @@ Class Router
         // setup path to controller class
         if(empty($path_array)){
             $path = 'controllers\\' . 'Index';
-            $method = $object;
+            $method = '';
         } else {
             $object = array_pop($path_array);
             $obray_path = 'obray\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '') . ucfirst($object);
@@ -209,7 +209,7 @@ Class Router
         } else {
             $remaining[] = $object;
             if( empty($path_array) ){
-                throw new HTTPException("Path not found (".$this->startingPath.").", 404);
+                //throw new HTTPException("Path not found (".$this->startingPath.").", 404);
             }
         }
         // recursively search path for controller
