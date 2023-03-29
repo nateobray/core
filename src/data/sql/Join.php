@@ -9,12 +9,14 @@ class Join
     private $fromColumn;
     private $toClass;
     private $toColumn;
+    private $type;
+    private $conditions = [];
     public $joins = [];
 
     const INNER = 1;
     const LEFT = 2;
     
-    public function __construct($name, $fromClass, $fromColumn, $toClass, $toColumn, $type = self::LEFT)
+    public function __construct($name, $fromClass, $fromColumn, $toClass, $toColumn, $conditions = [], $type = self::LEFT)
     {
         $this->name = $name;
         $this->fromClass = $fromClass;
@@ -22,6 +24,7 @@ class Join
         $this->toClass = $toClass;
         $this->toColumn = $toColumn;
         $this->type = $type;
+        $this->conditions = $conditions;
     }
 
     public function getName()
@@ -67,6 +70,9 @@ class Join
             $type = 'LEFT JOIN';
         }
         $sql = '   ' . $type . ' `' . $this->getToTable() . '` `'.$this->name.'` ON `'. $this->name . '`.`' . $this->getToColumn() . '` = `' . $fromTable . '`.`' . $this->getFromColumn() . "`\n";
+        forEach($this->conditions as $column => $value){
+            $sql .= "\t\tAND " . $column . " = " . $value . "\n";
+        }
         forEach($this->joins as $join){
             $sql .= $join->toSQL();
         }

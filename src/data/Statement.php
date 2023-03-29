@@ -130,9 +130,9 @@ class Statement
      * @return $this 
      */
 
-    public function leftJoin(string $name, string $toClass, mixed $fromClass=null, string $toColumn=null, string $fromColumn=null): Statement
+    public function leftJoin(string $name, string $toClass, mixed $fromClass=null, string $toColumn=null, string $fromColumn=null, array $conditions=[]): Statement
     {
-        $this->from->leftJoin($name, $toClass, $fromClass, $toColumn, $fromColumn);
+        $this->from->leftJoin($name, $toClass, $fromClass, $toColumn, $fromColumn, $conditions);
         if(!empty($this->select)) $this->select->add($name, $toClass);
         return $this;
     }
@@ -150,9 +150,9 @@ class Statement
      * @return $this 
      */
 
-    public function join(string $name, string $toClass, mixed $fromClass=null, string $toColumn=null, string $fromColumn=null): Statement
+    public function join(string $name, string $toClass, mixed $fromClass=null, string $toColumn=null, string $fromColumn=null, array $conditions = []): Statement
     {
-        $this->from->join($name, $toClass, $fromClass, $toColumn, $fromColumn);
+        $this->from->join($name, $toClass, $fromClass, $toColumn, $fromColumn, $conditions);
         if(!empty($this->select)) $this->select->add($name, $toClass);
         return $this;
     }

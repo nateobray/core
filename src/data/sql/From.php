@@ -26,12 +26,12 @@ class From
         return $this->joinMap;
     }
 
-    public function leftJoin(string $name, string $toClass, $fromClass=null, $toColumn=null, $fromColumn=null)
+    public function leftJoin(string $name, string $toClass, $fromClass=null, $toColumn=null, $fromColumn=null, array $conditions = [])
     {
-        $this->join($name, $toClass, $fromClass, $toColumn, $fromColumn, Join::LEFT);
+        $this->join($name, $toClass, $fromClass, $toColumn, $fromColumn, $conditions, Join::LEFT);
     }
 
-    public function join(string $name, string $toClass, $fromClass=null, $toColumn=null, $fromColumn=null, $joinType = Join::INNER)
+    public function join(string $name, string $toClass, $fromClass=null, $toColumn=null, $fromColumn=null, array $conditions = [], $joinType = Join::INNER)
     {
         $alias = '';
         if(is_array($fromClass)){
@@ -44,18 +44,18 @@ class From
 
         $aliasAttachement = (!empty($alias)?'-'.$alias:'');
         if(class_exists($fromClass) && $fromClass::TABLE === $this->table){
-            $join = new Join($name, $fromClass, $fromColumn, $toClass, $toColumn, $joinType);
+            $join = new Join($name, $fromClass, $fromColumn, $toClass, $toColumn, $conditions, $joinType);
             if(!empty($alias)) $join->addFromAlias($alias);
             $this->joinMap[$toClass.'-'.$name] = &$join;
             $this->joins[] = &$join;
         } elseif(!empty($this->joinMap[$fromClass.$aliasAttachement])) {
-            $this->joinMap[$fromClass.$aliasAttachement]->joins[$toClass.'-'.$name] = new Join($name, $fromClass, $fromColumn, $toClass, $toColumn, $joinType);
+            $this->joinMap[$fromClass.$aliasAttachement]->joins[$toClass.'-'.$name] = new Join($name, $fromClass, $fromColumn, $toClass, $toColumn, $conditions, $joinType);
             if(!empty($alias)) $this->joinMap[$fromClass.$aliasAttachement]->joins[$toClass.'-'.$name]->addFromAlias($alias);
             if(empty($this->joinMap[$toClass.'-'.$name])){
                 $this->joinMap[$toClass.'-'.$name] = &$this->joinMap[$fromClass.$aliasAttachement]->joins[$toClass.'-'.$name];
             }
         } elseif (empty($this->joinMap[$fromClass.$aliasAttachement])) {
-            $this->joins[$fromClass.$aliasAttachement] = new Join($name, $fromClass, $fromColumn, $toClass, $toColumn, $joinType);
+            $this->joins[$fromClass.$aliasAttachement] = new Join($name, $fromClass, $fromColumn, $toClass, $toColumn, $conditions, $joinType);
             if(!empty($alias)) $this->joins[$fromClass.$aliasAttachement]->addFromAlias($alias);
             if(empty($this->joinMap[$fromClass.$aliasAttachement])){
                 $this->joinMap[$toClass.'-'.$name] = &$this->joins[$fromClass.$aliasAttachement];
