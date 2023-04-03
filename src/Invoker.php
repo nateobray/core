@@ -105,6 +105,8 @@ Class Invoker implements InvokerInterface
     private static function getParameterValue($params, $parameter, $request)
     {
         if (!empty($params[$parameter->getName()])) {
+            if(!empty($parameter->getType()) && $parameter->getType()->getName() == 'bool' && $params[$parameter->getName()] == 'false') return false;
+            if(!empty($parameter->getType()) && $parameter->getType()->getName() == 'bool' && $params[$parameter->getName()] == 'true') return true;
             return $params[$parameter->getName()];
         }
 
