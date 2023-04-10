@@ -63,6 +63,9 @@ class Where
             } else if ($value instanceof LTE){
                 $columnSQL[] = $column . ' <= :' . $columnKey;
                 $this->values[':' . $columnKey] = $value->getValue();
+            } else if($value instanceof LIKE){
+                $columnSQL[] = $column . ' LIKE :' . $columnKey;
+                $this->values[':' . $columnKey] = $value->getValue();
             } else {
                 $columnSQL[] = $column . ' = :' . $columnKey;
                 $this->values[':' . $columnKey] = $value; 
@@ -96,6 +99,9 @@ class Where
         } else if ($v instanceof LTE){
             $this->values[':' . $columnKey] = $v->getValue();
             return $column . ' <= :' . $columnKey;
+        } else if ($v instanceof Like){
+            $this->values[':' . $columnKey] = $v->getValue();
+            return $column . ' LIKE :' . $columnKey;
         } else {
             if($v === null){
                 return $column . ' IS NULL';
