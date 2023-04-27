@@ -226,6 +226,7 @@ class Statement
         if(!empty($this->orderBy)) $sql .= $this->orderBy->toSQL();
         if(!empty($this->limit)) $sql .= $this->limit->toSQL();
         Helpers::console($sql."\n");
+        if(!empty($this->where)) Helpers::console($this->where->values());
         return $this;
     }
 
