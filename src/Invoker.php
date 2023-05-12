@@ -52,20 +52,8 @@ Class Invoker implements InvokerInterface
             throw new ClassMethodNotFound("Unable to find object method.", 404);
         }
     
-
-        // support legacy style methods
-        if (
-            count($parameters) === 1 &&
-            $parameters[0]->isDefaultValueAvailable() &&
-            is_array($parameters[0]->getDefaultValue()) &&
-            count($parameters[0]->getDefaultValue()) === 0
-        ) {
-            $object->$method($params);
-            return $object;
-        }
-
         // support fully parameratized methods with default values
-        $method_parameters = [];
+        $method_parameters = []; $hasNoDefault = false;
         forEach ($parameters as $parameter) {
             $method_parameters[] = self::getParameterValue($params, $parameter, $serverRequest);
         }
@@ -104,9 +92,10 @@ Class Invoker implements InvokerInterface
      */
     private static function getParameterValue($params, $parameter, $request)
     {
-        if (!empty($params[$parameter->getName()])) {
+        if (isSet($params[$parameter->getName()])) {
             if($parameter->getType() instanceof \ReflectionNamedType && $parameter->getType()->getName() == 'bool' && $params[$parameter->getName()] == 'false') return false;
             if($parameter->getType() instanceof \ReflectionNamedType && $parameter->getType()->getName() == 'bool' && $params[$parameter->getName()] == 'true') return true;
+            if($parameter->getType() instanceof \ReflectionNamedType && ($parameter->getType()->getName() == 'null' || $parameter->getType()->allowsNull()) && $params[$parameter->getName()] == 'null') return null;
             return $params[$parameter->getName()];
         }
 
@@ -142,5 +131,3 @@ Class Invoker implements InvokerInterface
     }
 
 }
-
-?>

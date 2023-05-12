@@ -150,39 +150,27 @@ Class DBConn
         return $DBStatement->fetchResults($fetchStyle);
     }
 
-    public function runStoredProc($proc, $params = array())
+    public function beginTransaction()
     {
-        $this->data = [];
-        $paramString = "";
-        $paramCount = 0;
-        foreach ($params as $paramName => $paramValue) {
-            if ($paramCount > 0) {
-                $paramString .= ",";
-            }
-            $paramString .= ":" . $paramName;
-            $paramCount++;
-        }
-
-        $procString = "CALL " . $proc . "(" . $paramString . ")";
-        $statement = $this->prepare($procString);
-        if ($paramCount > 0) {
-            foreach ($params as $paramName => $paramValue) {
-                $statement->bindValue(':' . $paramName, $paramValue);
-            }
-        }
-
-        try {
-            $statement->execute();
-            $statement->setFetchMode(\PDO::FETCH_OBJ);
-            $this->data = $statement->fetchAll();
-        } catch (\Exception $e) {
-            if (isset($this->is_transaction) && $this->is_transaction) {
-                $this->rollbackTransaction();
-            }
-            $this->throwError($e);
-            $this->logError(CoreProjectEnum::DBO, $e);
-        }
-        return $this->data;
+        $conn = $this->getConnection();
+        $conn->beginTransaction();
     }
 
+    public function commitTransaction()
+    {
+        $conn = $this->getConnection();
+        $conn->commit();
+    }
+
+    public function rollbackTransaction()
+    {
+        $conn = $this->getConnection();
+        $conn->rollBack();
+    }
+
+    public function inTransaction()
+    {
+        $conn = $this->getConnection();
+        return $conn->inTransaction();
+    }
 }

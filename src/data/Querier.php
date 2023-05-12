@@ -95,4 +95,56 @@ class Querier
     {
         return new Querier($this->DBConn);
     }
+
+    /**
+     * beginTransaction
+     * 
+     * Begin a transaction
+     * 
+     * @return void 
+     */
+
+    public function beginTransaction()
+    {
+        $this->DBConn->beginTransaction();
+    }
+
+    /**
+     * commit
+     * 
+     * Commit a transaction
+     * 
+     * @return void 
+     */
+
+    public function commit()
+    {
+        $this->DBConn->commit();
+    }
+
+    /**
+     * rollback
+     * 
+     * Rollback a transaction
+     * 
+     * @return void 
+     */
+
+    public function rollback()
+    {
+        $this->DBConn->rollback();
+    }
+
+    /**
+     * inTransaction
+     * 
+     * Check if a transaction is in progress
+     * 
+     * @return bool 
+     */
+    
+    public function inTransaction()
+    {
+        return $this->DBConn->inTransaction();
+    }
 }
