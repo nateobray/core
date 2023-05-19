@@ -95,7 +95,7 @@ Class Invoker implements InvokerInterface
         if (isSet($params[$parameter->getName()])) {
             if($parameter->getType() instanceof \ReflectionNamedType && $parameter->getType()->getName() == 'bool' && $params[$parameter->getName()] == 'false') return false;
             if($parameter->getType() instanceof \ReflectionNamedType && $parameter->getType()->getName() == 'bool' && $params[$parameter->getName()] == 'true') return true;
-            if($parameter->getType() instanceof \ReflectionNamedType && ($parameter->getType()->getName() == 'null' || $parameter->getType()->allowsNull()) && $params[$parameter->getName()] == 'null') return null;
+            if($parameter->getType() instanceof \ReflectionNamedType && ($parameter->getType()->getName() == 'null' || $parameter->getType()->allowsNull()) && ($params[$parameter->getName()] == 'null' || $params[$parameter->getName()] == '')) return null;
             return $params[$parameter->getName()];
         }
 
