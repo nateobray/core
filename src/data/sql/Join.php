@@ -71,7 +71,13 @@ class Join
         }
         $sql = '   ' . $type . ' `' . $this->getToTable() . '` `'.$this->name.'` ON `'. $this->name . '`.`' . $this->getToColumn() . '` = `' . $fromTable . '`.`' . $this->getFromColumn() . "`\n";
         forEach($this->conditions as $column => $value){
-            $sql .= "\t\tAND " . $column . " = " . $value . "\n";
+            if(is_array($value)){
+                
+                    $sql .= "\t\tAND `" . $this->name . '`.' . $column . " IN (" . implode(',',$value) . ")\n";
+                
+            } else {
+                $sql .= "\t\tAND " . $column . " = " . $value . "\n";
+            }
         }
         forEach($this->joins as $join){
             $sql .= $join->toSQL();
