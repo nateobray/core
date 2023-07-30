@@ -9,6 +9,7 @@ use ReflectionProperty;
 class DBO implements JsonSerializable
 {
     private $primaryKeyValue;
+    private array $encodeNot = [];
 
     public function __construct(...$params)
     {
@@ -29,6 +30,11 @@ class DBO implements JsonSerializable
                 $this->primaryKeyValue = $value;
             }
         }
+    }
+
+    public function setEncodeNot(array $encode_not)
+    {
+        $this->encodeNot = $encode_not;
     }
 
     public function getPrimaryKeyValue()
@@ -116,6 +122,8 @@ class DBO implements JsonSerializable
         $properties = $reflection->getProperties();
         
         forEach($this as $key => $prop){
+            if(!empty($this->encodeNot) && in_array($key, $this->encodeNot)) continue;
+
             if(strpos($key, 'col_') !== false && $prop instanceof BaseType) {
                 if($prop instanceof Password) continue;
                 $obj->{str_replace('col_', '', $key)} = $prop->getValue();
