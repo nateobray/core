@@ -138,7 +138,7 @@ class DBO implements JsonSerializable
 
     public function empty()
     {
-        return empty($this->primaryKeyValue);
+        return empty($this->primaryKeyValue) && $this->primaryKeyValue !== 0;
     }
 
 }
