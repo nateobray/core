@@ -72,11 +72,27 @@ class Join
         $sql = '   ' . $type . ' `' . $this->getToTable() . '` `'.$this->name.'` ON `'. $this->name . '`.`' . $this->getToColumn() . '` = `' . $fromTable . '`.`' . $this->getFromColumn() . "`\n";
         forEach($this->conditions as $column => $value){
             if(is_array($value)){
-                
-                    $sql .= "\t\tAND `" . $this->name . '`.' . $column . " IN (" . implode(',',$value) . ")\n";
-                
+                    $sql .= "\t\tAND `" . $this->name . '`.' . $column . " IN (" . implode(',',$value) . ")\n";                
             } else {
-                $sql .= "\t\tAND " . $column . " = " . $value . "\n";
+                if($value instanceof Not){
+                    if($value->getValue() === null){
+                       $sql .= "\t\tAND " . $column . ' IS NOT NULL' . "\n";
+                    } else {
+                        $sql .= "\t\tAND " . $column . ' != ' . $value->getValue() . "\n";
+                    }
+                } else if ($value instanceof GT){
+                    $sql .= $column . ' > ' . $value->getValue();
+                } else if ($value instanceof GTE){
+                    $sql .= $column . ' >= ' . $value->getValue();
+                } else if ($value instanceof LT){
+                    $sql .= $column . ' < ' . $value->getValue();
+                } else if ($value instanceof LTE){
+                    $sql .= $column . ' <= ' . $value->getValue();
+                } else if($value instanceof LIKE){
+                    $sql .= $column . ' LIKE ' . $value->getValue();
+                } else {
+                    $sql .= "\t\tAND " . $column . " = " . $value . "\n";
+                }
             }
         }
         forEach($this->joins as $join){
