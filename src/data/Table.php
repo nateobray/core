@@ -4,6 +4,7 @@ namespace obray\data;
 use obray\core\Helpers;
 use obray\data\sql\Index;
 use obray\data\sql\SQLForeignKey;
+use ReflectionClass;
 
 class Table
 {
@@ -55,6 +56,44 @@ class Table
             $columns[] = $property;
         }
         return $columns;
+    }
+
+    public function createAll($path = '/')
+    {
+        //FEATURE_SET
+        //print_r(__BASE_DIR__ . 'src/models' . $path . "\n");
+        $files = scandir(__BASE_DIR__ . 'src/models' . $path);
+        forEach($files as $i => $file){
+            if($i < 2) continue;
+            //print_r("\t" . __BASE_DIR__ . 'src/models' . $path . $file . "\n");
+            if(is_dir(__BASE_DIR__ . 'src/models' . $path . $file)){
+                //print_r(__BASE_DIR__ . 'src/models' . $path . $file . "\n");
+                $this->createAll( $path . $file . '/');
+            } else {
+                $modelPath = str_replace('/', '\\', $path);
+                $classStr = "\models" . $modelPath . str_replace('.php', '', $file);
+                if(is_subclass_of($classStr, 'obray\data\DBO')){
+
+                    
+                    $reflectionClass = new ReflectionClass($classStr);
+                    $ClassFeatureSet = $reflectionClass->getConstant('FEATURE_SET');
+                    if(empty($ClassFeatureSet)) continue;
+
+                    
+                    if(!empty(array_intersect(__FEATURE_SET__, $ClassFeatureSet))){
+                        Helpers::console("%s", $classStr . "\n", "GreenBold");
+                        $this->create($classStr);
+                    }
+                    
+                } else {
+                    //Helpers::console("%s", $classStr . "\n", "RedBold");
+                }
+                //$model = new $classStr();
+                
+            }
+            
+        }
+
     }
 
     public function create($class)
@@ -115,9 +154,50 @@ class Table
 
         $this->DBConn->query($sql);
 
+        if(defined($class . '::SEED_FILE')){
+            $this->seedFile($class, $columns);
+        }
+
         if(defined($class . '::SEED_CONSTANTS')){
             $this->seedConstants($class, $columns);
         }
+    }
+
+    private function seedFile($class, $columns)
+    {
+        $querier = new Querier($this->DBConn);
+
+        $reflectionClass = new ReflectionClass($class);
+        $SeedFile = $reflectionClass->getConstant('SEED_FILE');
+
+        print_r(__BASE_DIR__ . 'src/seeds/' . $SeedFile . "\n");
+        
+        $handle = fopen(__BASE_DIR__ . 'src/seeds/' . $SeedFile, 'r');
+        $count = 0; $keys = [];
+        if ($handle !== false) {
+            while (($data = fgetcsv($handle, 1000, ',')) !== false) {
+
+                print_r($data);
+
+                if($count === 0){
+                    $keys = $data;
+                    ++ $count;
+                    continue;
+                }
+
+                $params = [];
+                forEach($data as $index => $d){
+                    $params[$keys[$index]] = $d;
+                }
+
+                $obj = new $class(...$params);
+                $querier->insert($obj)->run();
+            }
+            fclose($handle);
+        } else {
+            // Handle the error
+        }
+        
     }
 
     private function seedConstants($class, $columns)
@@ -126,7 +206,7 @@ class Table
         $constants = $reflection->getConstants();
         $querier = new Querier($this->DBConn);
         forEach($constants as $key => $value){
-            if(in_array($key, ['SEED_CONSTANTS', 'TABLE', 'FOREIGN_KEYS', 'INDEXES'])) continue;
+            if(in_array($key, ['SEED_CONSTANTS', 'TABLE', 'FOREIGN_KEYS', 'INDEXES', 'FEATURE_SET', 'SEED_FILE'])) continue;
             $key = ucwords(strtolower(str_replace('_', ' ', $key)));
             $obj = new $class(...[
                 $columns[0]->propertyName => $value,
