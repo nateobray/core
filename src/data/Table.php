@@ -25,7 +25,15 @@ class Table
         return $table;
     }
 
-    static public function getPrimaryKey(string $class)
+    /**
+     * getPrimaryKey
+     * This finds the primary key for a given DBO class
+     * 
+     * @param string $class
+     * @return string 
+     * @throws Exception
+     */
+    static public function getPrimaryKey(string $class) : string
     {
         $reflection = new \ReflectionClass($class);
         $properties = $reflection->getProperties();
@@ -40,11 +48,20 @@ class Table
         throw new \Exception("No primary key found.");
     }
 
-    static public function getColumns($class)
+    /**
+     * getColumns
+     * Parses a given class properties and generates an array of column names from those properties
+     * Properties are defined with a 'col_' at the beginning of them.
+     * 
+     * @param string $class
+     * @return array $columns
+     */
+    static public function getColumns(string $class) : array
     {
         $reflection = new \ReflectionClass($class);
         $properties = $reflection->getProperties();
 
+        
         $columns = [];
         forEach($properties as $property){
             $propertyType = $property->getType();
@@ -58,45 +75,82 @@ class Table
         return $columns;
     }
 
-    public function createAll($path = '/')
+    /**
+     * createAll
+     * This creates and seeds all needed tables for a new project.
+     * 
+     * @param bool $printTable Prints table path to console
+     * @param bool $printSQL Prints table create sql to console
+     * @param bool $printSeed Prints seed data to console
+     * 
+     * @return void
+     */
+    public function createAll(bool $printTable = true, bool $printSQL = false, bool $printSeeds = true) : void
     {
-        //FEATURE_SET
-        //print_r(__BASE_DIR__ . 'src/models' . $path . "\n");
+        // Create and seed all tables from models folder in bm project.
+        $this->createTablesFromModelsFolder('/', $printTable, $printSQL, $printSeeds);
+
+        // Manually create Tables that live in obray/src/users/
+        Helpers::console("%s", "**** Tables from core ****" . "\n", "RedBackground");
+        $this->create('obray\users\RolePermission', $printTable, true, $printSeeds);
+        $this->create('obray\users\Role', $printTable, true, $printSeeds);
+        $this->create('obray\users\UserRole', $printTable, true, $printSeeds);
+        $this->create('obray\users\UserPermission', $printTable, true, $printSeeds);
+
+        // Manually fix order of Users table
+        $this->fixUserTableOrder();
+    }
+
+    /**
+     * createTablesFromModelsFolder
+     * This method traverses the models folder recusively in the bm project and creates tables for any classes that extend the DBO Class.
+     * It compares against the Feature Set that has been configured for the project.
+     * 
+     * @param string $path
+     * @param bool $printTable Prints table path to console
+     * @param bool $printSQL Prints table create sql to console
+     * @param bool $printSeed Prints seed data to console
+     * 
+     * @return void
+     */
+    private function createTablesFromModelsFolder(string $path = '/', bool $printTable = true, bool $printSQL = true, bool $printSeeds = true) : void
+    {
         $files = scandir(__BASE_DIR__ . 'src/models' . $path);
         forEach($files as $i => $file){
             if($i < 2) continue;
-            //print_r("\t" . __BASE_DIR__ . 'src/models' . $path . $file . "\n");
             if(is_dir(__BASE_DIR__ . 'src/models' . $path . $file)){
-                //print_r(__BASE_DIR__ . 'src/models' . $path . $file . "\n");
-                $this->createAll( $path . $file . '/');
+                $this->createTablesFromModelsFolder( $path . $file . '/', $printTable, $printSQL, $printSeeds);
             } else {
                 $modelPath = str_replace('/', '\\', $path);
                 $classStr = "\models" . $modelPath . str_replace('.php', '', $file);
+                // Check if it is a DBO class
                 if(is_subclass_of($classStr, 'obray\data\DBO')){
-
-                    
                     $reflectionClass = new ReflectionClass($classStr);
                     $ClassFeatureSet = $reflectionClass->getConstant('FEATURE_SET');
                     if(empty($ClassFeatureSet)) continue;
-
                     
+                    // Check against Feature Set
                     if(!empty(array_intersect(__FEATURE_SET__, $ClassFeatureSet))){
-                        Helpers::console("%s", $classStr . "\n", "GreenBold");
-                        $this->create($classStr);
+                        // Helpers::console("%s", $classStr . "\n", "GreenBold");
+                        $this->create($classStr, $printTable, $printSQL, $printSeeds);
                     }
-                    
-                } else {
-                    //Helpers::console("%s", $classStr . "\n", "RedBold");
-                }
-                //$model = new $classStr();
-                
+                } 
             }
-            
         }
-
     }
 
-    public function create($class)
+    /**
+     * create
+     * This creates and seeds a table for the given class that is provided.
+     * 
+     * @param string $class
+     * @param bool $printTable Prints table path to console
+     * @param bool $printSQL Prints table create sql to console
+     * @param bool $printSeed Prints seed data to console
+     * 
+     * @return void
+     */
+    public function create(string $class, bool $printTable = true, bool $printSQL = true, bool $printSeeds = true) : void
     {
         $reflection = new \ReflectionClass($class);
         $properties = $reflection->getProperties();
@@ -108,7 +162,7 @@ class Table
 
         $sql = $this->disableConstraints() . "\nCREATE TABLE `" . $table . '`' . "(\n";
 
-        Helpers::console("%s","*** Scripting Table " . $table . " ***\n","GreenBold");
+        if ($printTable) Helpers::console("%s","*** Scripting Table " . $table . " ***\n","GreenBold");
         
         $columnSQL = [];
         $columns = self::getColumns($class);
@@ -150,40 +204,50 @@ class Table
 
         $sql .= $this->enableConstraints();
 
-        Helpers::console("%s","\n" . $sql . "\n","White");
+        if($printSQL) Helpers::console("%s","\n" . $sql . "\n","Blue");
 
         $this->DBConn->query($sql);
 
         if(defined($class . '::SEED_FILE')){
-            $this->seedFile($class, $columns);
+            $this->seedFile($class, $printSeeds);
         }
 
         if(defined($class . '::SEED_CONSTANTS')){
-            $this->seedConstants($class, $columns);
+            $this->seedConstants($class, $columns, $printSeeds);
         }
     }
 
-    private function seedFile($class, $columns)
+    /**
+     * seedFile
+     * This seeds a table from a given .csv file found in /src/seeds/ folder
+     * 
+     * @param string $class
+     * @param bool $printSeed Prints seed data to console
+     * 
+     * @return void
+     */
+    private function seedFile(string $class, bool $printSeed = true) : void
     {
         $querier = new Querier($this->DBConn);
 
         $reflectionClass = new ReflectionClass($class);
         $SeedFile = $reflectionClass->getConstant('SEED_FILE');
 
-        print_r(__BASE_DIR__ . 'src/seeds/' . $SeedFile . "\n");
+        Helpers::console("%s",'Seed File: ' . $SeedFile . "\n", "Purple");
         
         $handle = fopen(__BASE_DIR__ . 'src/seeds/' . $SeedFile, 'r');
         $count = 0; $keys = [];
         if ($handle !== false) {
             while (($data = fgetcsv($handle, 1000, ',')) !== false) {
 
-                print_r($data);
-
+                // skip first row for csv headers
                 if($count === 0){
                     $keys = $data;
                     ++ $count;
                     continue;
                 }
+
+                if ($printSeed) print_r($data);
 
                 $params = [];
                 forEach($data as $index => $d){
@@ -195,13 +259,24 @@ class Table
             }
             fclose($handle);
         } else {
-            // Handle the error
+            Helpers::console("%s", $class . "\n", "RedBackground");
         }
         
     }
 
-    private function seedConstants($class, $columns)
+    /**
+     * seedConstants
+     * This seeds a table from the constants that are properties of that given class
+     * 
+     * @param string $class
+     * @param array $columns
+     * @param bool $printSeed Prints seed data to console
+     * 
+     * @return void
+     */
+    private function seedConstants(string $class, array $columns, bool $printSeed) : void
     {
+        if($printSeed) Helpers::console("%s", 'Seeding Constants from : ' . $class . "\n", "Purple");
         $reflection = new \ReflectionClass($class);
         $constants = $reflection->getConstants();
         $querier = new Querier($this->DBConn);
@@ -212,11 +287,18 @@ class Table
                 $columns[0]->propertyName => $value,
                 $columns[1]->propertyName => $key
             ]);
+            if($printSeed) Helpers::console("%s", $key . ":" .$value . "\n", "Purple");
             $querier->insert($obj)->run();
         }
     }
 
-    private function disableConstraints()
+    /**
+     * disableConstraints
+     * SQL needed to disable constraints
+     * 
+     * @return string $sql
+     */
+    private function disableConstraints() : string
     {
         $sql = "
             SET @ORIG_FOREIGN_KEY_CHECKS = @@FOREIGN_KEY_CHECKS;
@@ -234,7 +316,13 @@ class Table
         return $sql;
     }
 
-    private function enableConstraints()
+    /**
+     * enableConstraints
+     * SQL needed to enable constraints
+     * 
+     * @return string $sql
+     */
+    private function enableConstraints() : string
     {
         $sql = "
             SET FOREIGN_KEY_CHECKS = @ORIG_FOREIGN_KEY_CHECKS;
@@ -243,6 +331,34 @@ class Table
             SET TIME_ZONE = @ORIG_TIME_ZONE;
             SET SQL_MODE = @ORIG_SQL_MODE;
         ";
-        $sql;
+        return $sql;
+    }
+
+    /**
+     * fixUserTableOrder
+     * This fixes the order of the columns. Right now based on how this particular table is created the entity_id ends up as the first column. 
+     * 
+     * @return void
+     */
+    public function fixUserTableOrder() : void
+    {
+        $sql = "
+        ALTER TABLE `Users`
+        CHANGE `user_id` `user_id` int(11) unsigned NOT NULL auto_increment FIRST,
+        CHANGE `user_first_name` `user_first_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_id`,
+        CHANGE `user_last_name` `user_last_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_first_name`,
+        CHANGE `user_email` `user_email` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL AFTER `user_last_name`,
+        CHANGE `user_password` `user_password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_email`,
+        CHANGE `user_permission_level` `user_permission_level` tinyint(1) unsigned NOT NULL AFTER `user_password`,
+        CHANGE `user_is_active` `user_is_active` tinyint(1) NOT NULL DEFAULT '1' AFTER `user_permission_level`,
+        CHANGE `user_is_system` `user_is_system` tinyint(1) NOT NULL DEFAULT '0' AFTER `user_is_active`,
+        CHANGE `user_failed_attempts` `user_failed_attempts` int(11) unsigned NOT NULL DEFAULT '0' AFTER `user_is_system`,
+        CHANGE `user_last_login` `user_last_login` datetime NULL AFTER `user_failed_attempts`,
+        CHANGE `entity_id` `entity_id` int(11) unsigned NULL AFTER `user_last_login`,
+        CHANGE `user_token` `user_token` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `entity_id`,
+        CHANGE `user_pin` `user_pin` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_token`;
+        ";
+
+        $this->DBConn->query($sql);
     }
 }
