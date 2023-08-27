@@ -16,6 +16,8 @@ Class UserPermission extends DBO
 {
 	const TABLE = 'UserPermissions';
 
+	const SEED_FILE = 'UserPermissions.csv';
+
 	protected PrimaryKey $col_user_permission_id;
 	protected Int11Unsigned $col_permission_id;
 	protected Int11Unsigned $col_user_id;
