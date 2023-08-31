@@ -122,12 +122,8 @@ class Table
     {
         $this->disableConstraints();
 
-        if(in_array($class::TABLE, $this->tables)){
-            Helpers::console("%s", $class::TABLE . " already exists\n", "RedBold");
-            return;
-        }
         
-
+        
         $reflection = new \ReflectionClass($class);
         $properties = $reflection->getProperties();
 
@@ -135,15 +131,31 @@ class Table
         $constraints = [];
 
         $table = self::getTable($class);
-        array_push($this->tablesCreated, $table);
+        
+
+        $columnSQL = [];
+        $columns = self::getColumns($class);
+
+        if(in_array($class::TABLE, $this->tables)){
+            Helpers::console("%s", $class::TABLE . " already exists\n", "RedBold");
+
+            if(defined($class . '::KEEP_SEEDS_CURRENT') && defined($class . '::SEED_FILE')){
+                $this->seedFile($class, $printSeeds);
+            }
+    
+            if(defined($class . '::KEEP_SEEDS_CURRENT') && defined($class . '::SEED_CONSTANTS')){
+                $this->seedConstants($class, $columns, $printSeeds);
+            }
+
+            return;
+        }
 
         $sql = "\nCREATE TABLE `" . $table . '`' . "(\n";
         $this->tableCreationCount++;
+        array_push($this->tablesCreated, $table);
 
         if ($printTable) Helpers::console("%s","*** Scripting Table " . $table . " ***\n","GreenBold");
-        
-        $columnSQL = [];
-        $columns = self::getColumns($class);
+
         forEach($columns as $column){
             if(strpos($column->propertyClass, 'PrimaryKey')) $primaryKey = $column->propertyName;
             $columnSQL[] = "\t" . ($column->propertyClass)::createSQL($column->propertyName);
@@ -280,6 +292,12 @@ class Table
         $SeedFile = $reflectionClass->getConstant('SEED_FILE');
 
         if($printSeed) Helpers::console("%s",'Seed File: ' . $SeedFile . "\n", "Purple");
+
+        $results = $querier->select($class::class)->run();
+        $resultHashTable = [];
+        forEach($results as $result){
+            $resultHashTable[$result->{$result->getPrimaryKey()}] = hash('sha256', implode('||||', (array)$result));
+        }
         
         $handle = fopen(__BASE_DIR__ . 'src/seeds/' . $SeedFile, 'r');
         $count = 0; $keys = [];
@@ -300,8 +318,17 @@ class Table
                     $params[$keys[$index]] = $d;
                 }
 
-                $obj = new $class(...$params);
-                $querier->insert($obj)->run();
+                if(empty($resultHashTable[$params[$result->getPrimaryKey()]])){
+                    $obj = new $class(...$params);        
+                    $querier->insert($obj)->run();
+                }
+
+                if($resultHashTable[$params[$result->getPrimaryKey()]] !== hash('sha256', implode('||||', $params))) {
+                    $obj = new $class(...$params);        
+                    $querier->update($obj)->run();
+                }
+
+                //Helpers::console
             }
             fclose($handle);
         } else {
@@ -325,15 +352,36 @@ class Table
         $reflection = new \ReflectionClass($class);
         $constants = $reflection->getConstants();
         $querier = new Querier($this->DBConn);
+
+        $results = $querier->select($class)->run();
+        $resultHashTable = [];
+        forEach($results as $result){
+            $resultHashTable[$result->{$result->getPrimaryKey()}] = hash('sha256', implode('||||', $result->toArray()));
+        }
+        
         forEach($constants as $key => $value){
-            if(in_array($key, ['SEED_CONSTANTS', 'TABLE', 'FOREIGN_KEYS', 'INDEXES', 'FEATURE_SET', 'SEED_FILE'])) continue;
+            if(in_array($key, ['SEED_CONSTANTS', 'TABLE', 'FOREIGN_KEYS', 'INDEXES', 'FEATURE_SET', 'SEED_FILE', 'KEEP_SEEDS_CURRENT'])) continue;
             $key = ucwords(strtolower(str_replace('_', ' ', $key)));
-            $obj = new $class(...[
-                $columns[0]->propertyName => $value,
-                $columns[1]->propertyName => $key
-            ]);
-            if($printSeed) Helpers::console("%s", $key . ":" .$value . "\n", "Purple");
-            $querier->insert($obj)->run();
+
+            if(empty($resultHashTable[$value])){
+                $obj = new $class(...[
+                    $columns[0]->propertyName => $value,
+                    $columns[1]->propertyName => $key
+                ]);
+                Helpers::console("%s", "Adding new seed: " . $key . ": " .$value . "\n", "Purple");
+                $querier->insert($obj)->run();
+            }
+
+            if(!empty($resultHashTable[$value]) && $resultHashTable[$value] !== hash('sha256', implode('||||', [$columns[0]->propertyName => $value, $columns[1]->propertyName => $key]))) {
+                $obj = new $class(...[
+                    $columns[0]->propertyName => $value,
+                    $columns[1]->propertyName => $key
+                ]);
+                Helpers::console("%s", "Updating seed: " . $key . ": " .$value . "\n", "Purple");
+                $querier->update($obj)->run();
+            }
+
+            
         }
     }
 
@@ -400,8 +448,8 @@ class Table
             CHANGE `user_failed_attempts` `user_failed_attempts` int(11) unsigned NOT NULL DEFAULT '0' AFTER `user_is_system`,
             CHANGE `user_last_login` `user_last_login` datetime NULL AFTER `user_failed_attempts`,
             CHANGE `entity_id` `entity_id` int(11) unsigned NULL AFTER `user_last_login`,
-            CHANGE `user_token` `user_token` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `entity_id`,
-            CHANGE `user_pin` `user_pin` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_token`;
+            CHANGE `user_token` `user_token` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `entity_id`,
+            CHANGE `user_pin` `user_pin` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_token`;
         ";
 
         $this->DBConn->query($sql);
