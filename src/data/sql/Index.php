@@ -10,7 +10,7 @@ class Index
     {
         if(gettype($columns) === 'string') $columns = [$columns];
         $columnSQL = '`' . implode('`,`', $columns) . '`';
-        $keyName = hash('sha256', $columnSQL . '_index');
+        $keyName = hash('sha256', $columnSQL . '_index' . microtime());
         if(!empty($type)) $type = $type . ' ';
         $sql = $type . 'KEY `' . $keyName . '` (' . $columnSQL . ') USING BTREE';
         return $sql;

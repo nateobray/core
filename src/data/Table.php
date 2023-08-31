@@ -12,7 +12,6 @@ class Table
     private DBConn $DBConn;
     private $tableCreationCount = 0;
     private $tablesCreated = [];
-    private $tables = [];
 
     public function __construct(DBConn $DBConn)
     {
@@ -31,36 +30,25 @@ class Table
      */
     public function createAll(bool $printTable = false, bool $printSQL = false, bool $printSeeds = false, $debug = false) : void
     {
-
-        // get a list of existing tables
-        $stmt = $this->DBConn->query("SELECT * 
-                                FROM INFORMATION_SCHEMA.TABLES 
-                               WHERE TABLE_SCHEMA = '" . __BASE_DB_NAME__ . "';"
-        );
-        $this->tables = [];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $this->tables[] = $row['TABLE_NAME'];
-        }
-
         // Create and seed all tables from models folder in bm project.
         $this->createTablesFromModelsFolder('/', $printTable, $printSQL, $printSeeds);
 
         // Manually create Tables that live in obray/src/users/
         Helpers::console("%s", "**** Tables from core ****" . "\n", "RedBackground");
         $this->create('obray\users\RolePermission', $printTable, $printSQL, $printSeeds);
+        $this->tableCreationCount++;
         $this->create('obray\users\Role', $printTable, $printSQL, $printSeeds);
+        $this->tableCreationCount++;
         $this->create('obray\users\UserRole', $printTable, $printSQL, $printSeeds);
+        $this->tableCreationCount++;
         $this->create('obray\users\UserPermission', $printTable, $printSQL, $printSeeds);
+        $this->tableCreationCount++;
 
-        Helpers::console("%s", "\nWARNING: Currently only supports creating tables from models, WILL NOT UPDATE TABLES. \n", "YellowBold");
-
-        Helpers::console("%s","\n ********* Tables Created (" . $this->tableCreationCount . ") **********\n", "GreenBold");
-        if(empty($this->tablesCreated)){
-            Helpers::console("%s","\n\t No tables created\n\n", "GreenBold");
-        }
-        sort($this->tablesCreated);
-        forEach($this->tablesCreated as $createdTable){
-            Helpers::console("%s","\t $createdTable\n", "GreenBold");
+        if ($debug){
+            Helpers::console("%s","\n\n ********* Table Creation Count: " . $this->tableCreationCount . " **********\n", "GreenBold");
+            Helpers::console("%s","\n\n ********* Tables Created **********\n", "GreenBold");
+            sort($this->tablesCreated);
+            print_r($this->tablesCreated);
         }
 
         // Manually fix order of Users table
@@ -99,6 +87,7 @@ class Table
                     if(!empty(array_intersect(__FEATURE_SET__, $ClassFeatureSet))){
                         // Helpers::console("%s", $classStr . "\n", "GreenBold");
                         $this->create($classStr, $printTable, $printSQL, $printSeeds);
+                        $this->tableCreationCount++;
                     }
                 } 
             }
@@ -120,12 +109,6 @@ class Table
     {
         $this->disableConstraints();
 
-        if(in_array($class::TABLE, $this->tables)){
-            Helpers::console("%s", $class::TABLE . " already exists\n", "RedBold");
-            return;
-        }
-        
-
         $reflection = new \ReflectionClass($class);
         $properties = $reflection->getProperties();
 
@@ -136,7 +119,6 @@ class Table
         array_push($this->tablesCreated, $table);
 
         $sql = "\nCREATE TABLE `" . $table . '`' . "(\n";
-        $this->tableCreationCount++;
 
         if ($printTable) Helpers::console("%s","*** Scripting Table " . $table . " ***\n","GreenBold");
         
