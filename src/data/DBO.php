@@ -136,6 +136,27 @@ class DBO implements JsonSerializable
         return $obj;
     }
 
+    public function toArray(): array
+    {
+        $obj = [];
+        $reflection = new \ReflectionClass($this);
+        $properties = $reflection->getProperties();
+        
+        forEach($this as $key => $prop){
+            if(!empty($this->encodeNot) && in_array($key, $this->encodeNot)) continue;
+
+            if(strpos($key, 'col_') !== false && $prop instanceof BaseType) {
+                if($prop instanceof Password) continue;
+                $obj[str_replace('col_', '', $key)] = $prop->getValue();
+            }
+
+            if(strpos($key, 'cust_') !== false) {
+                $obj[str_replace('cust_', '', $key)] = $this->{$key};
+            }
+        }
+        return $obj;
+    }
+
     public function empty()
     {
         return empty($this->primaryKeyValue) && $this->primaryKeyValue !== 0;
