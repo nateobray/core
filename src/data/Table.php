@@ -318,14 +318,13 @@ class Table
                     $params[$keys[$index]] = $d;
                 }
 
-                if(empty($resultHashTable[$params[$result->getPrimaryKey()]])){
-                    $obj = new $class(...$params);        
+                $obj = new $class(...$params);        
+                if(empty($resultHashTable[$params[$obj->getPrimaryKey()]])){
                     $querier->insert($obj)->run();
                     Helpers::console("%s", "Adding new seed in $class\n", "Purple");
                 }
 
-                if(!empty($resultHashTable[$params[$result->getPrimaryKey()]]) && $resultHashTable[$params[$result->getPrimaryKey()]] !== hash('sha256', implode('||||', $params))) {
-                    $obj = new $class(...$params);        
+                if(!empty($resultHashTable[$params[$obj->getPrimaryKey()]]) && $resultHashTable[$params[$obj->getPrimaryKey()]] !== hash('sha256', implode('||||', $params))) {
                     $querier->update($obj)->run();
                     Helpers::console("%s", "Updating seed in $class\n", "Purple");
                 }
@@ -356,6 +355,7 @@ class Table
         $querier = new Querier($this->DBConn);
 
         $results = $querier->select($class)->run();
+        print_r($results);
         $resultHashTable = [];
         forEach($results as $result){
             $resultHashTable[$result->{$result->getPrimaryKey()}] = hash('sha256', implode('||||', $result->toArray()));
