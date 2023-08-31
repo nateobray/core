@@ -34,16 +34,12 @@ class Table
 
         // Manually create Tables that live in obray/src/users/
         Helpers::console("%s", "**** Tables from core ****" . "\n", "RedBackground");
-
         $this->create('obray\users\RolePermission', $printTable, $printSQL, $printSeeds);
         $this->tableCreationCount++;
-
         $this->create('obray\users\Role', $printTable, $printSQL, $printSeeds);
         $this->tableCreationCount++;
-
         $this->create('obray\users\UserRole', $printTable, $printSQL, $printSeeds);
         $this->tableCreationCount++;
-
         $this->create('obray\users\UserPermission', $printTable, $printSQL, $printSeeds);
         $this->tableCreationCount++;
 
@@ -110,6 +106,8 @@ class Table
      */
     public function create(string $class, bool $printTable = true, bool $printSQL = true, bool $printSeeds = true) : void
     {
+        $this->disableConstraints();
+
         $reflection = new \ReflectionClass($class);
         $properties = $reflection->getProperties();
 
@@ -119,7 +117,7 @@ class Table
         $table = self::getTable($class);
         array_push($this->tablesCreated, $table);
 
-        $sql = $this->disableConstraints() . "\nCREATE TABLE `" . $table . '`' . "(\n";
+        $sql = "\nCREATE TABLE `" . $table . '`' . "(\n";
 
         if ($printTable) Helpers::console("%s","*** Scripting Table " . $table . " ***\n","GreenBold");
         
@@ -161,8 +159,6 @@ class Table
 
         $sql .= "\n".') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;' . "\n\n";
 
-        $sql .= $this->enableConstraints();
-
         if($printSQL) Helpers::console("%s","\n" . $sql . "\n","Blue");
 
         $this->DBConn->query($sql);
@@ -174,6 +170,8 @@ class Table
         if(defined($class . '::SEED_CONSTANTS')){
             $this->seedConstants($class, $columns, $printSeeds);
         }
+
+        $this->enableConstraints();
     }
 
     /**
@@ -322,9 +320,9 @@ class Table
      * disableConstraints
      * SQL needed to disable constraints
      * 
-     * @return string $sql
+     * @return void
      */
-    private function disableConstraints() : string
+    private function disableConstraints() : void
     {
         $sql = "
             SET @ORIG_FOREIGN_KEY_CHECKS = @@FOREIGN_KEY_CHECKS;
@@ -339,16 +337,16 @@ class Table
             SET @ORIG_SQL_MODE = @@SQL_MODE;
             SET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO';
         ";
-        return $sql;
+        $this->DBConn->query($sql);
     }
 
     /**
      * enableConstraints
      * SQL needed to enable constraints
      * 
-     * @return string $sql
+     * @return void
      */
-    private function enableConstraints() : string
+    private function enableConstraints() : void
     {
         $sql = "
             SET FOREIGN_KEY_CHECKS = @ORIG_FOREIGN_KEY_CHECKS;
@@ -357,7 +355,7 @@ class Table
             SET TIME_ZONE = @ORIG_TIME_ZONE;
             SET SQL_MODE = @ORIG_SQL_MODE;
         ";
-        return $sql;
+        $this->DBConn->query($sql);
     }
 
     /**
