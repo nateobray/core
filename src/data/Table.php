@@ -355,7 +355,6 @@ class Table
         $querier = new Querier($this->DBConn);
 
         $results = $querier->select($class)->run();
-        print_r($results);
         $resultHashTable = [];
         forEach($results as $result){
             $resultHashTable[$result->{$result->getPrimaryKey()}] = hash('sha256', implode('||||', $result->toArray()));
