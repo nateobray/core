@@ -9,73 +9,15 @@ use ReflectionClass;
 class Table
 {
     private DBConn $DBConn;
+    private $tableCreationCount = 0;
+    private $tablesCreated = [];
+
     public function __construct(DBConn $DBConn)
     {
         $this->DBConn = $DBConn;
     }
 
-    static public function getTable($class)
-    {
-        $reflection = new \ReflectionClass($class);
-        try {
-            $table = $class::TABLE;
-        } catch (\Exception $e) {
-            throw new \Exception("Class does not have a table property, not compatible with data class.");
-        }
-        return $table;
-    }
-
-    /**
-     * getPrimaryKey
-     * This finds the primary key for a given DBO class
-     * 
-     * @param string $class
-     * @return string 
-     * @throws Exception
-     */
-    static public function getPrimaryKey(string $class) : string
-    {
-        $reflection = new \ReflectionClass($class);
-        $properties = $reflection->getProperties();
-        forEach($properties as $property){
-            $propertyType = $property->getType();
-            if($propertyType === null) continue;
-            $propertyClass = $propertyType->getName();
-            if(strpos($propertyClass, 'PrimaryKey') !== false){
-                return substr($property->name, 4);
-            }
-        }
-        throw new \Exception("No primary key found.");
-    }
-
-    /**
-     * getColumns
-     * Parses a given class properties and generates an array of column names from those properties
-     * Properties are defined with a 'col_' at the beginning of them.
-     * 
-     * @param string $class
-     * @return array $columns
-     */
-    static public function getColumns(string $class) : array
-    {
-        $reflection = new \ReflectionClass($class);
-        $properties = $reflection->getProperties();
-
-        
-        $columns = [];
-        forEach($properties as $property){
-            $propertyType = $property->getType();
-            if($propertyType === null) continue;
-            $propertyClass = $propertyType->getName();
-            if(strpos($propertyClass, 'obray\\dataTypes\\') === false && strpos($property->name, 'col_') !== 0) continue;
-            $property->propertyClass = $propertyClass;
-            $property->propertyName = substr($property->name, 4);
-            $columns[] = $property;
-        }
-        return $columns;
-    }
-
-    /**
+     /**
      * createAll
      * This creates and seeds all needed tables for a new project.
      * 
@@ -85,23 +27,38 @@ class Table
      * 
      * @return void
      */
-    public function createAll(bool $printTable = true, bool $printSQL = false, bool $printSeeds = true) : void
+    public function createAll(bool $printTable = false, bool $printSQL = false, bool $printSeeds = false, $debug = false) : void
     {
         // Create and seed all tables from models folder in bm project.
         $this->createTablesFromModelsFolder('/', $printTable, $printSQL, $printSeeds);
 
         // Manually create Tables that live in obray/src/users/
         Helpers::console("%s", "**** Tables from core ****" . "\n", "RedBackground");
-        $this->create('obray\users\RolePermission', $printTable, true, $printSeeds);
-        $this->create('obray\users\Role', $printTable, true, $printSeeds);
-        $this->create('obray\users\UserRole', $printTable, true, $printSeeds);
-        $this->create('obray\users\UserPermission', $printTable, true, $printSeeds);
+
+        $this->create('obray\users\RolePermission', $printTable, $printSQL, $printSeeds);
+        $this->tableCreationCount++;
+
+        $this->create('obray\users\Role', $printTable, $printSQL, $printSeeds);
+        $this->tableCreationCount++;
+
+        $this->create('obray\users\UserRole', $printTable, $printSQL, $printSeeds);
+        $this->tableCreationCount++;
+
+        $this->create('obray\users\UserPermission', $printTable, $printSQL, $printSeeds);
+        $this->tableCreationCount++;
+
+        if ($debug){
+            Helpers::console("%s","\n\n ********* Table Creation Count: " . $this->tableCreationCount . " **********\n", "GreenBold");
+            Helpers::console("%s","\n\n ********* Tables Created **********\n", "GreenBold");
+            sort($this->tablesCreated);
+            print_r($this->tablesCreated);
+        }
 
         // Manually fix order of Users table
         $this->fixUserTableOrder();
     }
 
-    /**
+     /**
      * createTablesFromModelsFolder
      * This method traverses the models folder recusively in the bm project and creates tables for any classes that extend the DBO Class.
      * It compares against the Feature Set that has been configured for the project.
@@ -133,6 +90,7 @@ class Table
                     if(!empty(array_intersect(__FEATURE_SET__, $ClassFeatureSet))){
                         // Helpers::console("%s", $classStr . "\n", "GreenBold");
                         $this->create($classStr, $printTable, $printSQL, $printSeeds);
+                        $this->tableCreationCount++;
                     }
                 } 
             }
@@ -159,6 +117,7 @@ class Table
         $constraints = [];
 
         $table = self::getTable($class);
+        array_push($this->tablesCreated, $table);
 
         $sql = $this->disableConstraints() . "\nCREATE TABLE `" . $table . '`' . "(\n";
 
@@ -218,6 +177,74 @@ class Table
     }
 
     /**
+     * getTable
+     * This finds the Table name for a given DBO class
+     * 
+     * @param string $class
+     * @return string 
+     * @throws Exception
+     */
+    static public function getTable($class)
+    {
+        $reflection = new \ReflectionClass($class);
+        try {
+            $table = $class::TABLE;
+        } catch (\Exception $e) {
+            throw new \Exception("Class does not have a table property, not compatible with data class.");
+        }
+        return $table;
+    }
+
+    /**
+     * getPrimaryKey
+     * This finds the primary key for a given DBO class
+     * 
+     * @param string $class
+     * @return string 
+     * @throws Exception
+     */
+    static public function getPrimaryKey(string $class) : string
+    {
+        $reflection = new \ReflectionClass($class);
+        $properties = $reflection->getProperties();
+        forEach($properties as $property){
+            $propertyType = $property->getType();
+            if($propertyType === null) continue;
+            $propertyClass = $propertyType->getName();
+            if(strpos($propertyClass, 'PrimaryKey') !== false){
+                return substr($property->name, 4);
+            }
+        }
+        throw new \Exception("No primary key found.");
+    }
+
+    /**
+     * getColumns
+     * Parses a given class properties and generates an array of column names from those properties
+     * Properties are defined with a 'col_' at the beginning of them.
+     * 
+     * @param string $class
+     * @return array $columns
+     */
+    static public function getColumns(string $class) : array
+    {
+        $reflection = new \ReflectionClass($class);
+        $properties = $reflection->getProperties();
+
+        $columns = [];
+        forEach($properties as $property){
+            $propertyType = $property->getType();
+            if($propertyType === null) continue;
+            $propertyClass = $propertyType->getName();
+            if(strpos($propertyClass, 'obray\\dataTypes\\') === false && strpos($property->name, 'col_') !== 0) continue;
+            $property->propertyClass = $propertyClass;
+            $property->propertyName = substr($property->name, 4);
+            $columns[] = $property;
+        }
+        return $columns;
+    }
+
+    /**
      * seedFile
      * This seeds a table from a given .csv file found in /src/seeds/ folder
      * 
@@ -233,7 +260,7 @@ class Table
         $reflectionClass = new ReflectionClass($class);
         $SeedFile = $reflectionClass->getConstant('SEED_FILE');
 
-        Helpers::console("%s",'Seed File: ' . $SeedFile . "\n", "Purple");
+        if($printSeed) Helpers::console("%s",'Seed File: ' . $SeedFile . "\n", "Purple");
         
         $handle = fopen(__BASE_DIR__ . 'src/seeds/' . $SeedFile, 'r');
         $count = 0; $keys = [];
@@ -261,7 +288,6 @@ class Table
         } else {
             Helpers::console("%s", $class . "\n", "RedBackground");
         }
-        
     }
 
     /**
@@ -343,20 +369,20 @@ class Table
     public function fixUserTableOrder() : void
     {
         $sql = "
-        ALTER TABLE `Users`
-        CHANGE `user_id` `user_id` int(11) unsigned NOT NULL auto_increment FIRST,
-        CHANGE `user_first_name` `user_first_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_id`,
-        CHANGE `user_last_name` `user_last_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_first_name`,
-        CHANGE `user_email` `user_email` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL AFTER `user_last_name`,
-        CHANGE `user_password` `user_password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_email`,
-        CHANGE `user_permission_level` `user_permission_level` tinyint(1) unsigned NOT NULL AFTER `user_password`,
-        CHANGE `user_is_active` `user_is_active` tinyint(1) NOT NULL DEFAULT '1' AFTER `user_permission_level`,
-        CHANGE `user_is_system` `user_is_system` tinyint(1) NOT NULL DEFAULT '0' AFTER `user_is_active`,
-        CHANGE `user_failed_attempts` `user_failed_attempts` int(11) unsigned NOT NULL DEFAULT '0' AFTER `user_is_system`,
-        CHANGE `user_last_login` `user_last_login` datetime NULL AFTER `user_failed_attempts`,
-        CHANGE `entity_id` `entity_id` int(11) unsigned NULL AFTER `user_last_login`,
-        CHANGE `user_token` `user_token` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `entity_id`,
-        CHANGE `user_pin` `user_pin` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_token`;
+            ALTER TABLE `Users`
+            CHANGE `user_id` `user_id` int(11) unsigned NOT NULL auto_increment FIRST,
+            CHANGE `user_first_name` `user_first_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_id`,
+            CHANGE `user_last_name` `user_last_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_first_name`,
+            CHANGE `user_email` `user_email` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL AFTER `user_last_name`,
+            CHANGE `user_password` `user_password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_email`,
+            CHANGE `user_permission_level` `user_permission_level` tinyint(1) unsigned NOT NULL AFTER `user_password`,
+            CHANGE `user_is_active` `user_is_active` tinyint(1) NOT NULL DEFAULT '1' AFTER `user_permission_level`,
+            CHANGE `user_is_system` `user_is_system` tinyint(1) NOT NULL DEFAULT '0' AFTER `user_is_active`,
+            CHANGE `user_failed_attempts` `user_failed_attempts` int(11) unsigned NOT NULL DEFAULT '0' AFTER `user_is_system`,
+            CHANGE `user_last_login` `user_last_login` datetime NULL AFTER `user_failed_attempts`,
+            CHANGE `entity_id` `entity_id` int(11) unsigned NULL AFTER `user_last_login`,
+            CHANGE `user_token` `user_token` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `entity_id`,
+            CHANGE `user_pin` `user_pin` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_token`;
         ";
 
         $this->DBConn->query($sql);
