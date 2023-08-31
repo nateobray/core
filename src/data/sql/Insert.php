@@ -36,7 +36,7 @@ class Insert
         
         $columnSQL = [];
         forEach($columns as $column){
-            if(strpos($column->propertyClass, 'PrimaryKey') && empty($instance->{$column->propertyName})) continue; 
+            if(strpos($column->propertyClass, 'PrimaryKey') && !isset($instance->{$column->propertyName})) continue; 
             if(strpos($column->propertyClass, 'DateTimeCreated')) continue;
             if(strpos($column->propertyClass, 'DateTimeModified')) continue;
             $columnSQL[] = $column->propertyName;
@@ -47,7 +47,7 @@ class Insert
             $this->instance = $instance;
             $valueSQL = [];
             forEach($columns as $column){
-                if(strpos($column->propertyClass, 'PrimaryKey') && empty($this->instance->{$column->propertyName})) continue;
+                if(strpos($column->propertyClass, 'PrimaryKey') && !isset($this->instance->{$column->propertyName})) continue;
                 if(strpos($column->propertyClass, 'DateTimeCreated')) continue;
                 if(strpos($column->propertyClass, 'DateTimeModified')) continue;
                 $valueSQL[] = ':' . $column->name; 
