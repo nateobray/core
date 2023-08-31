@@ -20,8 +20,10 @@ class Table
     }
 
      /**
-     * createAll
+     * migrate
      * This creates and seeds all needed tables for a new project.
+     * 
+     * TODO: Support updates to tables
      * 
      * @param bool $printTable Prints table path to console
      * @param bool $printSQL Prints table create sql to console
@@ -29,7 +31,7 @@ class Table
      * 
      * @return void
      */
-    public function createAll(bool $printTable = false, bool $printSQL = false, bool $printSeeds = false, $debug = false) : void
+    public function migrate(bool $printTable = false, bool $printSQL = false, bool $printSeeds = false, $debug = false) : void
     {
 
         // get a list of existing tables
