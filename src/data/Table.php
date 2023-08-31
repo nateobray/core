@@ -293,10 +293,10 @@ class Table
 
         if($printSeed) Helpers::console("%s",'Seed File: ' . $SeedFile . "\n", "Purple");
 
-        $results = $querier->select($class::class)->run();
+        $results = $querier->select($class)->run();
         $resultHashTable = [];
         forEach($results as $result){
-            $resultHashTable[$result->{$result->getPrimaryKey()}] = hash('sha256', implode('||||', (array)$result));
+            $resultHashTable[$result->{$result->getPrimaryKey()}] = hash('sha256', implode('||||', $result->toArray()));
         }
         
         $handle = fopen(__BASE_DIR__ . 'src/seeds/' . $SeedFile, 'r');
@@ -321,11 +321,13 @@ class Table
                 if(empty($resultHashTable[$params[$result->getPrimaryKey()]])){
                     $obj = new $class(...$params);        
                     $querier->insert($obj)->run();
+                    Helpers::console("%s", "Adding new seed in $class\n", "Purple");
                 }
 
-                if($resultHashTable[$params[$result->getPrimaryKey()]] !== hash('sha256', implode('||||', $params))) {
+                if(!empty($resultHashTable[$params[$result->getPrimaryKey()]]) && $resultHashTable[$params[$result->getPrimaryKey()]] !== hash('sha256', implode('||||', $params))) {
                     $obj = new $class(...$params);        
                     $querier->update($obj)->run();
+                    Helpers::console("%s", "Updating seed in $class\n", "Purple");
                 }
 
                 //Helpers::console
