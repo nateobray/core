@@ -35,7 +35,7 @@ class Update
         $columnSQL = []; $whereSQL = [];
         forEach($columns as $column){
             if(strpos($column->propertyClass, 'PrimaryKey') ){
-                if($this->instance->{$column->name}->empty()) continue;
+                if($this->instance->{$column->name}->empty() && $this->instance->{$column->name} !== 0) continue;
                 $whereSQL[] = "`" . $column->propertyName . "` = " . $this->instance->{$column->name}->insertSQL($this->DBConn);
                 continue;
             }
