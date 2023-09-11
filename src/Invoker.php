@@ -35,54 +35,58 @@ Class Invoker implements InvokerInterface
      * @return mixed
      */
 
-    public function invoke(ServerRequest $serverRequest, $object, $method, $params = [])
-    {
-        // reflect the object 
-        try {
-            $reflector = new \ReflectionClass($object);
-        } catch (\ReflectionException $e) {
-            throw new ClassNotFound("Unable to find object.", 404);
-        }
-
-        // reflect method and extract parameters
-        try {
-            $reflection_method = $reflector->getMethod($method);
-            $parameters = $reflection_method->getParameters();
-        } catch (\ReflectionException $e) {
-            throw new ClassMethodNotFound("Unable to find object method.", 404);
-        }
-    
-        // support fully parameratized methods with default values
-        $method_parameters = []; $hasNoDefault = false;
-        forEach ($parameters as $parameter) {
-            $method_parameters[] = self::getParameterValue($params, $parameter, $serverRequest);
-        }
-        
-        try{
-            $object->$method(...$method_parameters);
-            return $object;
-        } catch (TypeError $e){
-            $message = $e->getMessage();
-            print_r($e);
-            if(
-                str_contains($message, 'must be of type ' . GETRequest::class) ||
-                str_contains($message, 'must be of type ' . POSTRequest::class) ||
-                str_contains($message, 'must be of type ' . PUTRequest::class) ||
-                str_contains($message, 'must be of type ' . CONNECTRequest::class) ||
-                str_contains($message, 'must be of type ' . DELETERequest::class) ||
-                str_contains($message, 'must be of type ' . HEADRequest::class) ||
-                str_contains($message, 'must be of type ' . OPTIONSRequest::class) ||
-                str_contains($message, 'must be of type ' . PATCHRequest::class) ||
-                str_contains($message, 'must be of type ' . TRACERequest::class)
-            ){
-                throw new HTTPException(StatusCode::REASONS[StatusCode::METHOD_NOT_ALLOWED], StatusCode::METHOD_NOT_ALLOWED);
-            }
-            $messages = explode(',', $message);
-            $messages = explode(':', $messages[0]);
-            $message = str_replace('$', '', $messages[3]);
-            throw new HTTPException($message, StatusCode::NOT_ACCEPTED);
-        }
-    }
+     public function invoke(ServerRequest $serverRequest, $object, $method, $params = [])
+     {
+         // reflect the object 
+         try {
+             $reflector = new \ReflectionClass($object);
+         } catch (\ReflectionException $e) {
+             throw new ClassNotFound("Unable to find object.", 404);
+         }
+ 
+         // reflect method and extract parameters
+         try {
+             $reflection_method = $reflector->getMethod($method);
+             $parameters = $reflection_method->getParameters();
+         } catch (\ReflectionException $e) {
+             throw new ClassMethodNotFound("Unable to find object method.", 404);
+         }
+     
+         // support fully parameratized methods with default values
+         $method_parameters = []; $hasNoDefault = false;
+         forEach ($parameters as $parameter) {
+             $method_parameters[] = self::getParameterValue($params, $parameter, $serverRequest);
+         }
+         
+         try{
+             $object->$method(...$method_parameters);
+             return $object;
+         } catch (TypeError $e){
+             $message = $e->getMessage();
+             print_r($e);
+             if(
+                 str_contains($message, 'must be of type ' . GETRequest::class) ||
+                 str_contains($message, 'must be of type ' . POSTRequest::class) ||
+                 str_contains($message, 'must be of type ' . PUTRequest::class) ||
+                 str_contains($message, 'must be of type ' . CONNECTRequest::class) ||
+                 str_contains($message, 'must be of type ' . DELETERequest::class) ||
+                 str_contains($message, 'must be of type ' . HEADRequest::class) ||
+                 str_contains($message, 'must be of type ' . OPTIONSRequest::class) ||
+                 str_contains($message, 'must be of type ' . PATCHRequest::class) ||
+                 str_contains($message, 'must be of type ' . TRACERequest::class)
+             ){
+                 throw new HTTPException(StatusCode::REASONS[StatusCode::METHOD_NOT_ALLOWED], StatusCode::METHOD_NOT_ALLOWED);
+             }
+             $messages = explode(',', $message);
+             $messages = explode(':', $messages[0]);
+             if(!empty($messages[3])){
+                 $message = str_replace('$', '', $messages[3]);
+             } else {
+                 $message = $e->getMessage();
+             }
+             throw new HTTPException($message, StatusCode::NOT_ACCEPTED);
+         }
+     }
 
     /**
      * @param array $params
