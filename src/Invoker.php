@@ -78,11 +78,15 @@ Class Invoker implements InvokerInterface
                  throw new HTTPException(StatusCode::REASONS[StatusCode::METHOD_NOT_ALLOWED], StatusCode::METHOD_NOT_ALLOWED);
              }
              $messages = explode(',', $message);
-             $messages = explode(':', $messages[0]);
-             if(!empty($messages[3])){
-                 $message = str_replace('$', '', $messages[3]);
+             if(!empty($messages[0])){
+                $messages = explode(':', $messages[0]);
+                if(!empty($messages[3])){
+                    $message = str_replace('$', '', $messages[3]);
+                } else {
+                    $message = $e->getMessage();
+                }
              } else {
-                 $message = $e->getMessage();
+                $message = $e->getMessage();
              }
              throw new HTTPException($message, StatusCode::NOT_ACCEPTED);
          }
