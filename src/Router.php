@@ -370,11 +370,16 @@ Class Router
         $encoded = $this->errorEncoder->encode($error, null, true);
         
         // output HTTP response
-        $response = new Response(500, [
-            'Content-Type' => $this->errorEncoder->getContentType()
-        ], $encoded);
-        $response->out();
-        exit();
+        if(is_string($encoded)){
+            $response = new Response(500, [
+                'Content-Type' => $this->errorEncoder->getContentType()
+            ], $encoded);
+            $response->out();
+            exit();
+        } else {
+            Helpers::console($encoded);
+            throw new \Exception($encoded->error??'An exception has ocurred');
+        }
     }
 
     static public function fatalHandler(EncoderInterface $encoder, $startTime) 

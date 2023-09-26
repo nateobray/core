@@ -43,8 +43,8 @@ Class ErrorEncoder extends JSONEncoder
 
         $args = func_get_args();
         if( PHP_SAPI == 'cli' && !empty($args) ) {
-            Helpers::console($obj);
-            exit();
+            //Helpers::console($obj);
+            return $obj;
         }
         
         $obj->runtime = (microtime(true) - $start_time) * 1000;
