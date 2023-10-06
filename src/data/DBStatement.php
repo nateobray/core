@@ -48,8 +48,14 @@ class DBStatement
 
     public function bindValues($params)
     {
+        $param_type = \PDO::PARAM_STR;
         foreach ($params as $key => $param) {
-            $this->bindValue($key, $param);
+            switch(gettype($param)){
+                case 'integer': $param_type = \PDO::PARAM_INT; break;
+                case 'boolean': $param_type = \PDO::PARAM_BOOL; break;
+                case 'NULL':  $param_type = \PDO::PARAM_NULL; break;
+            }
+            $this->bindValue($key, $param, $param_type);
         }
     }
 
