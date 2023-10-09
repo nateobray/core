@@ -82,7 +82,7 @@ Class JSONEncoder implements EncoderInterface
 
     public function out($data)
     {    
-        echo $data;
+        print_r($data);
     }
 
 }
