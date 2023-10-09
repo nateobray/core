@@ -366,7 +366,7 @@ Class Router
         $error = new UserLevelException($error_message, $error_level);
         $error->setFile($error_file);
         $error->setLine($error_line);
-        $error->setServerRequest($this->ServerRequest);
+        if(!empty($this->ServerRequest)) $error->setServerRequest($this->ServerRequest);
         $encoded = $this->errorEncoder->encode($error, null, true);
         
         // output HTTP response

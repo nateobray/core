@@ -15,8 +15,16 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
     {
         $method = Method::GET;
         if(PHP_SAPI === 'cli' || !empty($_SERVER['argv'])){
-            if(empty($_SERVER['argv'][1])) throw new \Exception("Console dedected, but not path specified.");
+            if(empty($_SERVER['argv'][1])) throw new \Exception("Console dedected, but no path specified.");
             $uri = $_SERVER['argv'][1];
+            if(!empty($path)) $uri = $path;
+            $method = 'CONSOLE';
+            $this->params = $params;
+            $components = parse_url($uri);
+            if(!empty($components['query'])) parse_str($components['query'], $this->params);
+            $this->cookies = [];
+        } else if(!empty($_REQUEST['TENANT'])){
+            $uri = $_REQUEST['PATH'];
             if(!empty($path)) $uri = $path;
             $method = 'CONSOLE';
             $this->params = $params;
@@ -162,8 +170,7 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
     public static function createRequest(string $path = '', array $params = [])
     {
         try {
-             
-            if(empty($_SERVER['REQUEST_METHOD']) && (PHP_SAPI === 'cli' || !empty($_SERVER['argv'])) ){
+            if((empty($_SERVER['REQUEST_METHOD']) || !empty($_REQUEST['TENANT'])) && (PHP_SAPI === 'cli' || !empty($_SERVER['argv']) || !empty($_REQUEST['TENANT'])) ){
                 $method = 'CONSOLE';
             } else {
                 $method = $_SERVER['REQUEST_METHOD'];
