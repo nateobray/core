@@ -110,7 +110,11 @@ Class Router
             // since we don't know what kind of exception we're dealing with, go with code 500
             $code = StatusCode::INTERNAL_SERVER_ERROR;
             // use the error encoder
-            $this->encoder = $this->errorEncoder;
+            if(!empty($this->errorEncoder)){
+                $this->encoder = $this->errorEncoder;
+            } else {
+                throw $e;
+            }
         }
         
         // at this point if we don't have an encoder, we're going to throw and exception
