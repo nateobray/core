@@ -98,7 +98,8 @@ Class DBConn
                     $this->username,
                     $this->password,
                     array(
-                        \PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8'
+                        \PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8',
+                        \PDO::ATTR_PERSISTENT => false
                     ));
                 $this->conn->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
                 $this->is_connected = true;
@@ -174,7 +175,7 @@ Class DBConn
         return $conn->inTransaction();
     }
 
-    public function closeConnection() {
+    public function disconnect() {
         if ($this->conn !== null) {
             $this->conn = null;
             $this->is_connected = false;
