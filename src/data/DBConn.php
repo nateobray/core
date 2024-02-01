@@ -173,4 +173,11 @@ Class DBConn
         $conn = $this->getConnection();
         return $conn->inTransaction();
     }
+
+    public function closeConnection() {
+        if ($this->conn !== null) {
+            $this->conn = null;
+            $this->is_connected = false;
+        }
+    }
 }
