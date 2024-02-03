@@ -4,7 +4,7 @@ namespace obray\users;
 use obray\data\DBO;
 use obray\data\types\PrimaryKey;
 use obray\data\types\Text;
-use obray\data\types\Varchar24;
+use obray\data\types\Varchar64;
 
 /**
  * Permission
@@ -20,7 +20,7 @@ Class Permission extends DBO
 	const ANY = 1;
 	
 	protected PrimaryKey $col_permission_id;
-	protected Varchar24 $col_permission_code;
+	protected Varchar64 $col_permission_code;
 	protected Text $col_permission_description;
 
 	const INDEXES = [
