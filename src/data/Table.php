@@ -4,7 +4,12 @@ namespace obray\data;
 use obray\core\Helpers;
 use obray\data\sql\Index;
 use obray\data\sql\SQLForeignKey;
+use obray\data\types\BooleanTrue;
+use obray\data\types\DateTimeCreated;
+use obray\data\types\DateTimeNullable;
+use obray\data\types\Varchar1;
 use PDO;
+use Reflection;
 use ReflectionClass;
 
 class Table
@@ -122,8 +127,6 @@ class Table
     {
         $this->disableConstraints();
 
-        
-        
         $reflection = new \ReflectionClass($class);
         $properties = $reflection->getProperties();
 
@@ -139,6 +142,8 @@ class Table
         if(in_array($class::TABLE, $this->tables)){
             Helpers::console("%s", $class::TABLE . " already exists\n", "RedBold");
 
+            $this->updateTable($class::TABLE, $class);
+            
             if(defined($class . '::KEEP_SEEDS_CURRENT') && defined($class . '::SEED_FILE')){
                 $this->seedFile($class, $printSeeds);
             }
@@ -206,6 +211,261 @@ class Table
 
         $this->enableConstraints();
     }
+
+    private function updateTable($table, $class)
+    {
+        //print_r($class . "\n");
+        $classCols = $this->getColumns($class);
+        
+        $stmt = $this->DBConn->query("SHOW CREATE TABLE $table;");
+        $create = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            
+            // Use regex to capture column details
+            $pattern = '/\s*`(\w+)`\s+(\w+)(?:\((\d+)(?:,\s*(\d+))?\))?\s*(unsigned)?\s*(NOT NULL)?\s*(AUTO_INCREMENT)?\s*(DEFAULT\s*(?:NULL|CURRENT_TIMESTAMP|\'[^\']*\'))?(?:\s*ON UPDATE CURRENT_TIMESTAMP)?,?/i';
+            
+            // Use a separate regex to capture the primary key
+            $primaryKeyPattern = '/PRIMARY KEY \(`([^`]+)`\)/';
+
+            preg_match_all($pattern, $row["Create Table"], $matches, PREG_SET_ORDER);
+            preg_match($primaryKeyPattern, $row["Create Table"], $primaryKeyMatch);
+
+            $primaryKey = isset($primaryKeyMatch[1]) ? $primaryKeyMatch[1] : null;
+            
+            $columns = [];
+            foreach ($matches as $match) {
+                //print_r($match);
+                if(!empty($match[2]) && $match[2] == 'FOREIGN') continue;
+                $column = [
+                    'name' => $match[1],
+                    'type' => $match[2],
+                    'length' => !empty($match[3]) ? $match[3] : null,
+                    'unsigned' => !empty($match[5]) ? true : false,
+                    'not_null' => !empty($match[6]) ? true : false,
+                    'auto_increment' => !empty($match[7]) ? true : false,
+                    'default' => !empty($match[8]) ? $match[8] : null,
+                    'on_update' => strpos($match[0], 'ON UPDATE CURRENT_TIMESTAMP') !== false ? 'CURRENT_TIMESTAMP' : null,
+                    'is_primary' => $match[1] === $primaryKey, // Mark if this column is the primary key
+                ];
+                $columns[] = $column;
+            }
+
+            $newCols = $classCols;
+            forEach($classCols as $index => $classCol){
+                forEach($columns as $column){
+                    if($classCol->name == 'col_' . $column['name']){
+                        unset($newCols[$index]);
+                    }
+                }
+            }
+
+            if(!empty($newCols)){
+                forEach($newCols as $newCol){
+
+                    Helpers::console("%s", "\nTable ");
+                    Helpers::console("%s", $table, "YellowBold");
+                    Helpers::console("%s", " is missing column ");
+                    Helpers::console("%s", str_replace('col_', '', $newCol->name) . ": \n\n", "YellowBold");
+                    
+                    $this->addColumn($table, ($newCol->propertyClass)::createSQL(str_replace('col_', '', $newCol->name)));
+                }
+            }
+            
+            forEach($columns as $column){
+                
+                $type = $this->getType($column);
+                
+                $isColumnFound = false; $selectedClassCol = null;
+                forEach($classCols as $classCol){
+
+                    if($classCol->propertyClass == 'obray\data\types\ForeignKeyNullable') $classCol->propertyClass = 'obray\data\types\Int11UnsignedNullable';
+                    if($classCol->propertyClass == 'obray\data\types\ForeignKey') $classCol->propertyClass = 'obray\data\types\Int11Unsigned';
+                    if($classCol->propertyClass == 'obray\data\types\Password') $classCol->propertyClass = 'obray\data\types\Varchar255Nullable';
+                    if($classCol->name == 'col_' . $column['name']) {
+                        
+                        $selectedClassCol = $classCol;
+                        $isColumnFound = true;
+                        break;
+                    }         
+                }
+
+                if($selectedClassCol && $isColumnFound && 'obray\\data\\types\\' . $type != $selectedClassCol->propertyClass) {
+
+                    //print_r(('obray\\data\\types\\' . $type)::createSQL($column['name']) . "\n");
+                    //print_r($column);
+                    //print_r($selectedClassCol);
+
+                    Helpers::console("%s", "\nOn table ");
+                    Helpers::console("%s", $table, "YellowBold");
+                    Helpers::console("%s", " on column ");
+                    Helpers::console("%s", str_replace('col_', '', $selectedClassCol->name) . ": \n\n", "YellowBold");
+                    Helpers::console("%s", "\tCurrent Data Type: ");
+                    Helpers::console("%s", 'obray\\data\\types\\' . $type . "\n", "Blue");
+                    Helpers::console("%s", "\tDefined Data Type: ");
+                    Helpers::console("%s", $selectedClassCol->propertyClass . "\n\n", "Blue");
+
+                    $this->alterTable($table, ($selectedClassCol->propertyClass)::createSQL(str_replace('col_', '', $selectedClassCol->name)));
+                };
+                
+                //$columns[] = $column;
+            }
+
+            $pattern = '/CONSTRAINT\s+`([^`]+)`\s+FOREIGN KEY\s+\(`([^`]+)`\)\s+REFERENCES\s+`([^`]+)`\s+\(`([^`]+)`\)(?:\s+ON DELETE\s+(CASCADE|SET NULL|RESTRICT|NO ACTION))?(?:\s+ON UPDATE\s+(CASCADE|SET NULL|RESTRICT|NO ACTION))?/';
+
+            preg_match_all($pattern, $row["Create Table"], $matches, PREG_SET_ORDER);
+
+            $foreignKeys = [];
+            foreach ($matches as $match) {
+                $foreignKeys[] = [
+                    'constraint_name' => $match[1],
+                    'column_name' => $match[2],
+                    'referenced_table' => $match[3],
+                    'referenced_column' => $match[4],
+                    'on_delete' => $match[5] ?? null,
+                    'on_update' => $match[6] ?? null,
+                ];
+            }
+
+            // build Foreign Keys
+
+            if(defined($class . '::FOREIGN_KEYS')){
+                $newForeignKeys = $class::FOREIGN_KEYS;
+                forEach($class::FOREIGN_KEYS as $index => $key){
+                    forEach($foreignKeys as $foreignKey){
+                        if($foreignKey['column_name'] == $key[0] && $foreignKey['referenced_table'] == $key[1] && $foreignKey['referenced_column'] == $key[2]){
+                            unset($newForeignKeys[$index]);
+                        }
+                    }
+                }
+            }
+
+            if(!empty($newForeignKeys)) {
+
+                foreach($newForeignKeys as $newForeignKey){
+
+                    Helpers::console("%s", "\nTable ");
+                    Helpers::console("%s", $table, "YellowBold");
+                    Helpers::console("%s", " is missing a foreign key to ");
+                    helpers::console("%s", $newForeignKey[1], "YellowBold");
+                    Helpers::console("%s", " on ");
+                    helpers::console("%s", $newForeignKey[0], "YellowBold");
+                    helpers::console("%s", ' -> ');
+                    helpers::console("%s", $newForeignKey[2] . "\n\n", "YellowBold");
+
+                    $foreign = SQLForeignKey::createSQL(...$newForeignKey);
+                    $this->addForeignKey($table, $foreign[1]);
+                }
+            }
+
+            //print_r($columns);
+        }
+        
+        
+    }
+
+    private function addColumn($table, $sql)
+    {
+        $alterSql = "ALTER TABLE $table ADD COLUMN $sql;";
+
+        Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
+        Helpers::console("%s", "\t" . $alterSql . "\n\n");
+        Helpers::console("%s", "*** SQL TO EXECUTE END ***\n\n\n", "WhiteBold");
+        // Prompt the user for confirmation
+        echo "Are you sure you want to make changes? (y/n): ";
+        $userInput = trim(fgets(STDIN)); // Read user input from the standard input
+
+        // Check if the user input is "y" or "Y"
+        if (strtolower($userInput) === 'y') {
+            echo "Proceeding with changes...\n";
+            $this->DBConn->run($alterSql);
+        } else {
+            echo "Operation cancelled.\n";
+        }
+
+    }
+
+    private function addForeignKey($table, $sql = '')
+    {
+        $alterSql = "ALTER TABLE $table ADD $sql;";
+        Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
+        Helpers::console("%s", "\t" . $alterSql . "\n\n");
+        Helpers::console("%s", "*** SQL TO EXECUTE END ***\n\n\n", "WhiteBold");
+        // Prompt the user for confirmation
+        echo "Are you sure you want to make changes? (y/n): ";
+        $userInput = trim(fgets(STDIN)); // Read user input from the standard input
+
+        // Check if the user input is "y" or "Y"
+        if (strtolower($userInput) === 'y') {
+            echo "Proceeding with changes...\n";
+            $this->DBConn->run($alterSql);
+        } else {
+            echo "Operation cancelled.\n";
+        }
+    }
+
+    private function alterTable($table, $sql)
+    {
+        $alterSql = "ALTER TABLE $table MODIFY COLUMN $sql;";
+        Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
+        Helpers::console("%s", "\t" . $alterSql . "\n\n");
+        Helpers::console("%s", "*** SQL TO EXECUTE END ***\n\n\n", "WhiteBold");
+        // Prompt the user for confirmation
+        echo "Are you sure you want to make changes? (y/n): ";
+        $userInput = trim(fgets(STDIN)); // Read user input from the standard input
+
+        // Check if the user input is "y" or "Y"
+        if (strtolower($userInput) === 'y') {
+            echo "Proceeding with changes...\n";
+            $this->DBConn->run($alterSql);
+        } else {
+            echo "Operation cancelled.\n";
+        }
+
+    }
+
+    private function getType($column)
+    {
+        switch($column['type'])
+        {
+            case 'datetime':
+                if($column['default'] == 'DEFAULT CURRENT_TIMESTAMP') return 'DateTimeCreated';
+                if($column['on_update'] == 'CURRENT_TIMESTAMP') return 'DateTimeModified';
+                if($column['default'] == 'DEFAULT NULL') return 'DateTimeNullable';
+                return 'DateTime';
+                break;
+            case 'date':
+                if($column['default'] == 'DEFAULT NULL') return 'DateNullable';
+                return 'Date';
+                break;
+            case 'varchar':
+                if($column['not_null']) return 'Varchar' . $column['length'];
+                return 'Varchar' . $column['length'] . 'Nullable';
+                break;
+            case 'int':
+                if($column['is_primary'] == true) return 'PrimaryKey';
+                $type = 'Int' . $column['length'];
+                if($column['unsigned']) $type .= 'Unsigned';
+                if(!$column['not_null']) $type .= 'Nullable';
+                if($column['default'] == 'DEFAULT \'1\'') $type .= 'Default1';
+                if($column['default'] == 'DEFAULT \'0\'') $type .= 'Default0';
+                return $type;
+                break;
+            case 'tinyint':
+                if($column['default'] == 'DEFAULT \'0\'') return 'Boolean';
+                return 'BooleanTrue';
+            case 'text':
+                return 'Text';
+            case 'decimal':
+                if(!$column['not_null']) return 'DecimalNullable';
+                return 'Decimal';
+                break;
+            case 'float':
+                return 'Flt';
+                break;
+        }
+    }
+
+    
 
     /**
      * getTable
@@ -443,7 +703,6 @@ class Table
             CHANGE `user_last_name` `user_last_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_first_name`,
             CHANGE `user_email` `user_email` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL AFTER `user_last_name`,
             CHANGE `user_password` `user_password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `user_email`,
-            CHANGE `user_permission_level` `user_permission_level` tinyint(1) unsigned NOT NULL AFTER `user_password`,
             CHANGE `user_is_active` `user_is_active` tinyint(1) NOT NULL DEFAULT '1' AFTER `user_permission_level`,
             CHANGE `user_is_system` `user_is_system` tinyint(1) NOT NULL DEFAULT '0' AFTER `user_is_active`,
             CHANGE `user_failed_attempts` `user_failed_attempts` int(11) unsigned NOT NULL DEFAULT '0' AFTER `user_is_system`,
