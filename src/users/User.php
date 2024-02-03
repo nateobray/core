@@ -28,7 +28,6 @@ Class User extends DBO
     public Varchar64Nullable $col_user_last_name;
     public Varchar64 $col_user_email;
     public Password $col_user_password;
-    public TinyInt1UnsignedDefault1 $col_user_permission_level;
     public BooleanTrue $col_user_is_active;
     public Boolean $col_user_is_system;
     public Int11UnsignedDefault0 $col_user_failed_attempts;

@@ -609,6 +609,7 @@ class Table
      */
     private function seedConstants(string $class, array $columns, bool $printSeed) : void
     {
+        
         if($printSeed) Helpers::console("%s", 'Seeding Constants from : ' . $class . "\n", "Purple");
         $reflection = new \ReflectionClass($class);
         $constants = $reflection->getConstants();
@@ -621,6 +622,8 @@ class Table
         }
         
         forEach($constants as $key => $value){
+
+            
             if(in_array($key, ['SEED_CONSTANTS', 'TABLE', 'FOREIGN_KEYS', 'INDEXES', 'FEATURE_SET', 'SEED_FILE', 'KEEP_SEEDS_CURRENT'])) continue;
             $key = ucwords(strtolower(str_replace('_', ' ', $key)));
 
@@ -634,10 +637,12 @@ class Table
             }
 
             if(!empty($resultHashTable[$value]) && $resultHashTable[$value] !== hash('sha256', implode('||||', [$columns[0]->propertyName => $value, $columns[1]->propertyName => $key]))) {
+                
                 $obj = new $class(...[
                     $columns[0]->propertyName => $value,
                     $columns[1]->propertyName => $key
                 ]);
+                
                 Helpers::console("%s", "Updating seed: " . $key . ": " .$value . "\n", "Purple");
                 $querier->update($obj)->run();
             }
