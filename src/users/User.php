@@ -37,7 +37,6 @@ Class User extends DBO
         ['user_first_name'],
         ['user_last_name'],
         ['user_email', 'UNIQUE'],
-        ['user_permission_level'],
         ['user_is_active'],
         ['user_is_system'],
         ['user_password'],
