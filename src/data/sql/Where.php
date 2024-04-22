@@ -42,7 +42,7 @@ class Where
             }
 
             $columnKey = $column;
-            if(strpos($column, '.') !== false) $columnKey = str_replace('.', '', strstr($column, '.'));
+            if(strpos($column, '.') !== false) $columnKey = str_replace('.', '_', $column);
 
             if($value instanceof Not){
                 if($value->getValue() === null){
