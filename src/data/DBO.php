@@ -72,15 +72,17 @@ class DBO implements JsonSerializable
         }
     }
 
-    public function __get($key)
+    public function &__get($key)
     {
         if(isSet($this->{'col_' . $key})){
-            return $this->{'col_' . $key}->getValue();
+            $value = $this->{'col_' . $key}->getValue();
+            return $value;
         } 
         if(isSet($this->{'cust_' . $key})){
-            return $this->{'cust_' . $key};
+            $value = $this->{'cust_' . $key};
+            return $value;
         }
-        $value = $this->{$key};
+        $value = &$this->{$key};
         return $value;
     }
 
