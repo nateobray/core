@@ -81,15 +81,15 @@ class Join
                         $sql .= "\t\tAND " . $column . ' != ' . $value->getValue() . "\n";
                     }
                 } else if ($value instanceof GT){
-                    $sql .= $column . ' > ' . $value->getValue();
+                    $sql .= "\t\tAND " . $column . ' > ' . $value->getValue();
                 } else if ($value instanceof GTE){
-                    $sql .= $column . ' >= ' . $value->getValue();
+                    $sql .= "\t\tAND " . $column . ' >= ' . $value->getValue();
                 } else if ($value instanceof LT){
-                    $sql .= $column . ' < ' . $value->getValue();
+                    $sql .= "\t\tAND " . $column . ' < ' . $value->getValue();
                 } else if ($value instanceof LTE){
-                    $sql .= $column . ' <= ' . $value->getValue();
+                    $sql .= "\t\tAND " . $column . ' <= ' . $value->getValue();
                 } else if($value instanceof LIKE){
-                    $sql .= $column . ' LIKE ' . $value->getValue();
+                    $sql .= "\t\tAND " . $column . ' LIKE ' . $value->getValue();
                 } else {
                     $sql .= "\t\tAND " . $column . " = " . $value . "\n";
                 }
