@@ -78,9 +78,9 @@ class Querier
      * @return Statement 
      */
 
-    public function select($class)
+    public function select($class, string $sql = null)
     {
-        return (new Statement($this->DBConn))->select($class);
+        return (new Statement($this->DBConn))->select($class, $sql);
     }
 
     /**

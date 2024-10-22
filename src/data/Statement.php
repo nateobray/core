@@ -108,13 +108,18 @@ class Statement
      * @return $this 
      */
 
-    public function select(string $class): Statement
+    public function select(string $class, string $sql = null): Statement
     {
         $this->action = 'selecting';
         $this->class = $class;
-        $this->select = new Select($class);
+        $this->select = new Select($class, $sql);
         $this->from = new From($class);
         return $this;
+    }
+
+    public function count()
+    {
+        return $this->run('', [], true);
     }
 
     /**
@@ -312,7 +317,7 @@ class Statement
      * @throws Exception 
      */
 
-    public function run(string $sql = '', array $values = []): mixed
+    public function run(string $sql = '', array $values = [], $count = false): mixed
     {
         // check what action we are performing and call the onBefore lifecycle method
         if($this->action === 'updating') $this->update->onBeforeUpdate($this->newQuerier());
@@ -334,7 +339,7 @@ class Statement
             $values = $this->update->values();
         } 
         if(!empty($this->delete)) $sql .= $this->delete->toSQL();
-        if(!empty($this->select)) $sql .= $this->select->toSQL();
+        if(!empty($this->select)) $sql .= $this->select->toSQL($count);
         if(!empty($this->from)) $sql .= $this->from->toSQL();
         if(!empty($this->where)){
             $sql .= $this->where->toSQL();
@@ -345,6 +350,10 @@ class Statement
 
         // send the query to the database and get the results
         $data = $this->conn->run($sql, $values, \PDO::FETCH_ASSOC);
+
+        if($count){
+            return $data[0][0]['count'];
+        }
 
         $results = [];
         // if we are selecting then we need to populate the results

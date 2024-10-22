@@ -66,6 +66,8 @@ class Where
             } else if($value instanceof LIKE){
                 $columnSQL[] = $column . ' LIKE :' . $columnKey;
                 $this->values[':' . $columnKey] = $value->getValue();
+            } else if($value instanceof RawSQL){
+                $columnSQL[] = $value->getValue();
             } else {
                 $columnSQL[] = $column . ' = :' . $columnKey;
                 $this->values[':' . $columnKey] = $value; 
