@@ -90,6 +90,9 @@ class Join
                     $sql .= "\t\tAND " . $column . ' <= ' . $value->getValue();
                 } else if($value instanceof LIKE){
                     $sql .= "\t\tAND " . $column . ' LIKE ' . $value->getValue();
+                } else if ($value instanceof RawSQL){
+                    
+                    $sql .= "\t\tAND " . $value->getValue();
                 } else {
                     $sql .= "\t\tAND " . $column . " = " . $value . "\n";
                 }
