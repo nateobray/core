@@ -10,7 +10,7 @@ class DateTime extends BaseType implements \JsonSerializable
     const LENGTH = null;
     const UNSIGNED = false;
     const NULLABLE = false;
-    const DEFAULT = '0000-00-00 00:00:00';
+    const DEFAULT = null;
     const AUTO_INCEMENT = false;
 
     public function __construct(mixed $value=self::DEFAULT)
