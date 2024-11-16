@@ -227,23 +227,22 @@ class Table
             //$pattern = '/\s*`(\w+)`\s+(\w+)(?:\((\d+)(?:,\s*(\d+))?\))?\s*(unsigned)?\s*(NOT NULL)?\s*(AUTO_INCREMENT)?\s*(DEFAULT\s*(?:NULL|CURRENT_TIMESTAMP|\'[^\']*\'))?(?:\s*ON UPDATE CURRENT_TIMESTAMP)?,?/i';
             //$pattern = '/\s*`(\w+)`\s+(\w+)(?:\((\d+)(?:,\s*(\d+))?\))?\s*(unsigned)?\s*(?:COLLATE\s+\w+)?\s*(NOT NULL)?\s*(AUTO_INCREMENT)?\s*(DEFAULT\s*(?:NULL|CURRENT_TIMESTAMP|\'[^\']*\'))?(?:\s*ON UPDATE CURRENT_TIMESTAMP)?,?/i';
             $pattern = '/\s*`(\w+)`\s+(\w+)(?:\((\d+)(?:,\s*(\d+))?\))?\s*(unsigned)?\s*(?:CHARACTER SET\s+\w+)?\s*(?:COLLATE\s+\w+)?\s*(NOT NULL)?\s*(AUTO_INCREMENT)?\s*(DEFAULT\s*(?:NULL|CURRENT_TIMESTAMP|\'[^\']*\'))?(?:\s*ON UPDATE CURRENT_TIMESTAMP)?,?/i';
-            
-            // Use a separate regex to capture the primary key
+
             $primaryKeyPattern = '/PRIMARY KEY \(`([^`]+)`\)/';
 
             preg_match_all($pattern, $row["Create Table"], $matches, PREG_SET_ORDER);
             preg_match($primaryKeyPattern, $row["Create Table"], $primaryKeyMatch);
 
             $primaryKey = isset($primaryKeyMatch[1]) ? $primaryKeyMatch[1] : null;
-            
+
             $columns = [];
             foreach ($matches as $match) {
-                //print_r($match);
-                if(!empty($match[2]) && $match[2] == 'FOREIGN') continue;
+                if (!empty($match[2]) && $match[2] == 'FOREIGN') continue;
                 $column = [
                     'name' => $match[1],
                     'type' => $match[2],
-                    'length' => !empty($match[3]) ? $match[3] : null,
+                    'length' => !empty($match[3]) ? $match[3] : ($match[2] == 'int' ? 11 : null),
+                    'precision' => ($match[2] == 'decimal' && !empty($match[4])) ? $match[4] : null,
                     'unsigned' => !empty($match[5]) ? true : false,
                     'not_null' => !empty($match[6]) ? true : false,
                     'auto_increment' => !empty($match[7]) ? true : false,
@@ -255,9 +254,9 @@ class Table
             }
 
             $newCols = $classCols;
-            forEach($classCols as $index => $classCol){
-                forEach($columns as $column){
-                    if($classCol->name == 'col_' . $column['name']){
+            foreach ($classCols as $index => $classCol) {
+                foreach ($columns as $column) {
+                    if ($classCol->name == 'col_' . $column['name']) {
                         unset($newCols[$index]);
                     }
                 }
@@ -460,8 +459,12 @@ class Table
             case 'text':
                 return 'Text';
             case 'decimal':
-                if(!$column['not_null']) return 'DecimalNullable';
-                return 'Decimal';
+                $type = 'Decimal';
+                if (!empty($column['precision']) && $column['precision'] != 2) {
+                    $type .= $column['precision'];
+                }
+                if (!$column['not_null']) $type .= 'Nullable';
+                return $type;
                 break;
             case 'float':
                 return 'Flt';
