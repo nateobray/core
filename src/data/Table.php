@@ -4,10 +4,6 @@ namespace obray\data;
 use obray\core\Helpers;
 use obray\data\sql\Index;
 use obray\data\sql\SQLForeignKey;
-use obray\data\types\BooleanTrue;
-use obray\data\types\DateTimeCreated;
-use obray\data\types\DateTimeNullable;
-use obray\data\types\Varchar1;
 use PDO;
 use Reflection;
 use ReflectionClass;
@@ -291,8 +287,8 @@ class Table
                         break;
                     }         
                 }
-
-                if($selectedClassCol && $isColumnFound && 'obray\\data\\types\\' . $type != $selectedClassCol->propertyClass) {
+                
+                if(($selectedClassCol && $isColumnFound && 'obray\\data\\types\\' . $type != $selectedClassCol->propertyClass)) {
 
                     //print_r(('obray\\data\\types\\' . $type)::createSQL($column['name']) . "\n");
                     //print_r($column);
@@ -467,6 +463,9 @@ class Table
                 return $type;
                 break;
             case 'float':
+                $type = 'Flt';
+                if($column['unsigned']) $type .= 'Unsigned';
+                if(!$column['not_null']) $type .= 'Nullable';
                 return 'Flt';
                 break;
         }
