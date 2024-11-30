@@ -51,6 +51,8 @@ class Update
 
         if(!empty($whereSQL)){
             $sql .= "\n WHERE " . implode("\n  AND ", $whereSQL);
+        } else {
+            throw new \Exception("WHERE is empty on update (NOT ALLOWED): " . $sql);
         }
         return $sql;
     }
