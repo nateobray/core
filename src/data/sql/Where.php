@@ -82,6 +82,13 @@ class Where
     {
         $columnKey = $column . '_' . $index . '_';
         if(strpos($column, '.') !== false) $columnKey = str_replace('.', '', strstr($column, '.')) . '_' . $index . '_';
+        if($v instanceof AndOp){
+            $ands = [];
+            forEach($v->getValue() as $index => $val){
+                $ands[] = $this->getExpression($column, $index, $val);
+            }
+            return '( ' . implode(' AND ', $ands) . ' )';
+        }
         if($v instanceof Not){
             $this->values[':' . $columnKey] = $v->getValue();
             if($v->getValue() === null){
