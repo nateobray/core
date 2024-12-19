@@ -154,6 +154,11 @@ class DBStatement
     {
         $file = preg_replace('#/+#', '/', $file);
 
+        // Check if file exists before attempting to resolve realpath
+        if (!is_file($file)) {
+            throw new SqlFileNotFound();
+        }
+
         if (($path = realpath($file)) === false) {
             throw new SqlFileNotFound();
         }
