@@ -26,8 +26,10 @@ class DBStatement
     public function loadSql($sql)
     {
         try {
-            $this->loadSqlFile($sql);
-            return $this;
+            if(strlen($sql) <= 255){
+                $this->loadSqlFile($sql);
+                return $this;
+            }
         } catch (SqlFileNotFound $e) {
         }
 
