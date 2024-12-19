@@ -25,12 +25,12 @@ class DBStatement
 
     public function loadSql($sql)
     {
-        try {
-            if(strlen($sql) <= 255){
+        if ($this->isFilePath($sql)) {
+            try {
                 $this->loadSqlFile($sql);
                 return $this;
+            } catch (SqlFileNotFound $e) {
             }
-        } catch (SqlFileNotFound $e) {
         }
 
         try {
@@ -46,6 +46,11 @@ class DBStatement
         }
 
         throw new SqlFailedToLoad();
+    }
+
+    protected function isFilePath($input)
+    {
+        return is_string($input) && strlen($input) > 0 && strpos($input, '/') !== false && is_file($input);
     }
 
     public function bindValues($params)
