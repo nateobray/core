@@ -3,6 +3,7 @@ namespace obray\sessions;
 
 use obray\sessions\exceptions\SessionInitFailure;
 
+#[\AllowDynamicProperties]
 Class Session
 {
     public function get()

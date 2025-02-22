@@ -6,6 +6,7 @@ use obray\data\types\BaseType;
 use obray\data\types\Password;
 use ReflectionProperty;
 
+#[\AllowDynamicProperties]
 class DBO implements JsonSerializable
 {
     private $primaryKeyValue;
