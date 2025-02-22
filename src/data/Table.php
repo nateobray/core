@@ -529,17 +529,17 @@ class Table
         $properties = $reflection->getProperties();
 
         $columns = [];
-        foreach ($properties as $property) {
+        forEach($properties as $property){
             $propertyType = $property->getType();
-            if ($propertyType === null) continue;
-
+            if($propertyType === null) continue;
             $propertyClass = $propertyType->getName();
-            if (strpos($propertyClass, 'obray\\dataTypes\\') === false && strpos($property->name, 'col_') !== 0) continue;
-
+            if(strpos($propertyClass, 'obray\\dataTypes\\') === false && strpos($property->name, 'col_') !== 0) continue;
+            
             $columns[] = (object)[
+                'name' => $property->name,
+                'class' => $property->class,
                 'propertyClass' => $propertyClass,
-                'propertyName' => substr($property->name, 4),
-                'property' => $property
+                'propertyName' => substr($property->name, 4)
             ];
         }
         return $columns;
