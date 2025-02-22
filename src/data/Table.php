@@ -572,7 +572,7 @@ class Table
         $handle = fopen(__BASE_DIR__ . 'src/seeds/' . $SeedFile, 'r');
         $count = 0; $keys = [];
         if ($handle !== false) {
-            while (($data = fgetcsv($handle, 1000, ',')) !== false) {
+            while (($data = fgetcsv($handle, 1000, ',', "\"", "\\")) !== false) {
 
                 // skip first row for csv headers
                 if($count === 0){
