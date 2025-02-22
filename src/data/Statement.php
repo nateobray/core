@@ -108,7 +108,7 @@ class Statement
      * @return $this 
      */
 
-    public function select(string $class, string $sql = null): Statement
+    public function select(string $class, ?string $sql = null): Statement
     {
         $this->action = 'selecting';
         $this->class = $class;
@@ -135,7 +135,7 @@ class Statement
      * @return $this 
      */
 
-    public function leftJoin(string $name, string $toClass, mixed $fromClass=null, string $toColumn=null, string $fromColumn=null, array $conditions=[]): Statement
+    public function leftJoin(string $name, string $toClass, mixed $fromClass=null, ?string $toColumn=null, ?string $fromColumn=null, array $conditions=[]): Statement
     {
         $this->from->leftJoin($name, $toClass, $fromClass, $toColumn, $fromColumn, $conditions);
         if(!empty($this->select)) $this->select->add($name, $toClass);
@@ -155,7 +155,7 @@ class Statement
      * @return $this 
      */
 
-    public function join(string $name, string $toClass, mixed $fromClass=null, string $toColumn=null, string $fromColumn=null, array $conditions = []): Statement
+    public function join(string $name, string $toClass, mixed $fromClass=null, ?string $toColumn=null, ?string $fromColumn=null, array $conditions = []): Statement
     {
         $this->from->join($name, $toClass, $fromClass, $toColumn, $fromColumn, $conditions);
         if(!empty($this->select)) $this->select->add($name, $toClass);

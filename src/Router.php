@@ -34,6 +34,10 @@ Class Router
     private array $encodersByClassProperty = [];
     private array $encodersByContentType = [];
     private string $startingPath;
+    public $factory;
+    public $invoker;
+    public $container;
+    private bool $debug_mode;
     private EncoderInterface $encoder;
     private PermissionsInterface $permHandler;
     private ServerRequest $ServerRequest;
@@ -56,7 +60,7 @@ Class Router
     public function __construct(
         FactoryInterface $factory,
         InvokerInterface $invoker,
-        ContainerInterface $container=NULL,
+        ContainerInterface|null $container=NULL,
         $debug = false,
         $start_time = null
     ) {
@@ -362,7 +366,6 @@ Class Router
             case E_USER_WARNING:
             case E_NOTICE:
             case E_USER_NOTICE:
-            case E_STRICT:
             default:
         }
 

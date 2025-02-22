@@ -38,7 +38,7 @@ class PermissionHandler implements PermissionsInterface
      * 
      * @throws PermissionDenied
      */
-    public function checkPermissions(mixed $obj, string $fn = null)
+    public function checkPermissions(mixed $obj, ?string $fn = null)
     {
         $perms = [];
         

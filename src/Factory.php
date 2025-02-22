@@ -28,7 +28,7 @@ Class Factory implements FactoryInterface
      * @param \Psr\Container\ContainerInterface $container Variable that contains the container
      */
 
-    public function __construct( ContainerInterface $container=NULL )
+    public function __construct( ContainerInterface|null $container=NULL )
     {
         $this->container = $container;
     }

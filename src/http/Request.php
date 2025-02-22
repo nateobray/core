@@ -11,7 +11,7 @@ class Request extends Message implements RequestInterface
     private string $method = Method::GET;
     private URI $uri;
 
-    public function __construct($method= Method::GET, $uri='/', $headers=[], StreamInterface $body=null, $version='1.1')
+    public function __construct($method= Method::GET, $uri='/', $headers=[], ?StreamInterface $body=null, $version='1.1')
     {
         $this->uri = new URI($uri);
         $this->method = $method;

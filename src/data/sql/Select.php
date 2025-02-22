@@ -8,7 +8,7 @@ class Select
     private $classes = [];
     private $raw_sql = [];
 
-    public function __construct(string $class, string $sql = null)
+    public function __construct(string $class, ?string $sql = null)
     {
         $this->classes[$class::TABLE] = $class;
         if(!empty($sql)) $this->raw_sql[$class::TABLE] = $sql;

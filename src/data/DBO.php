@@ -9,6 +9,7 @@ use ReflectionProperty;
 class DBO implements JsonSerializable
 {
     private $primaryKeyValue;
+    private $primaryKeyColumn;
     private array $encodeNot = [];
 
     public function __construct(...$params)

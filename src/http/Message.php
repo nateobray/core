@@ -23,7 +23,7 @@ class Message implements MessageInterface
     private array $headers = [];
     private Body $body;
 
-    public function __construct(array $headers = [], string $body = null, $version = '1.1')
+    public function __construct(array $headers = [], ?string $body = null, $version = '1.1')
     {
         $this->version = $version;
         $this->headers = array_change_key_case($headers, CASE_LOWER);

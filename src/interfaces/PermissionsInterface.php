@@ -11,6 +11,6 @@ namespace obray\core\interfaces;
  */
 interface PermissionsInterface
 {
-        public function checkPermissions(mixed $obj, string $fn = null);
+        public function checkPermissions(mixed $obj, ?string $fn = null);
         public function hasPermission(string $code): bool;
 }
