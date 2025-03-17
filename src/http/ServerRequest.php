@@ -24,7 +24,11 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
             if(!empty($components['query'])) parse_str($components['query'], $this->params);
             $this->cookies = [];
         } else if(!empty($_REQUEST['TENANT'])){
-            $uri = $_REQUEST['PATH'];
+            if(empty($path)){
+                $uri = $_REQUEST['PATH'];
+            } else {
+                $uri = $path;
+            }
             if(!empty($path)) $uri = $path;
             $method = 'CONSOLE';
             $this->params = $params;
@@ -32,9 +36,18 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
             if(!empty($components['query'])) parse_str($components['query'], $this->params);
             $this->cookies = [];
         } else {
-            $uri = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER["REQUEST_URI"];
+            if(empty($path)){
+                $uri = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER["REQUEST_URI"];
+            } else {
+                $uri = $path;
+            }
+            
             $method = $_SERVER['REQUEST_METHOD'];
-            $this->params = array_merge($_GET, $_POST);
+            if(empty($params)){
+                $this->params = array_merge($_GET, $_POST);
+            } else {
+                $this->params = $params;
+            }
             switch(strtolower($method))
             {
                 case 'put': $this->parseRequest($method, $_SERVER["CONTENT_TYPE"]); break;
@@ -175,7 +188,7 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
             } else {
                 $method = $_SERVER['REQUEST_METHOD'];
             }
-            $requestType = '\\obray\\core\\http\\requests\\' . strtoupper($method) . 'Request';
+            $requestType = '\\obray\\core\\http\\requests\\' . strtoupper($method) . 'Request';     
             return new $requestType($path, $params);
         } catch (\Exception $e){
             throw new HTTPException(StatusCode::REASONS[StatusCode::METHOD_NOT_ALLOWED], StatusCode::METHOD_NOT_ALLOWED);
