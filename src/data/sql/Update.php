@@ -17,6 +17,11 @@ class Update
         $this->DBConn = $DBConn;
     }
 
+    public function getInstance()
+    {
+        return $this->instance;
+    }
+
     public function onBeforeUpdate(Querier $querier)
     {
         $this->instance->onBeforeUpdate($querier);

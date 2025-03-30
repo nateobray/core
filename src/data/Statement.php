@@ -320,7 +320,13 @@ class Statement
     public function run(string $sql = '', array $values = [], $count = false): mixed
     {
         // check what action we are performing and call the onBefore lifecycle method
-        if($this->action === 'updating') $this->update->onBeforeUpdate($this->newQuerier());
+        if($this->action === 'updating') {
+            if (method_exists($this->update->getInstance(), 'isDirty') && !$this->update->getInstance()->isDirty()) {
+                // Skip update if not dirty
+                return [];
+            }
+            $this->update->onBeforeUpdate($this->newQuerier());
+        }
         if($this->action === 'inserting') $this->insert->onBeforeInsert($this->newQuerier());
 
         // if sql is not empty, then run that instead

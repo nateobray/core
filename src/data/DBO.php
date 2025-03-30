@@ -12,6 +12,7 @@ class DBO implements JsonSerializable
     private $primaryKeyValue;
     private $primaryKeyColumn;
     private array $encodeNot = [];
+    protected bool $_is_dirty = false;
 
     public function __construct(...$params)
     {
@@ -32,6 +33,7 @@ class DBO implements JsonSerializable
                 $this->primaryKeyValue = $value;
             }
         }
+        $this->markClean();
     }
 
     public function setEncodeNot(array $encode_not)
@@ -68,8 +70,18 @@ class DBO implements JsonSerializable
             $propertyType = $property->getType();
             if($propertyType === null) throw new \Exception("Invalid property: " . $key . "\n");
             $propertyClass = $propertyType->getName();
+
+            // Only mark dirty if the value is actually changing
+            if (!isset($this->{'col_' . $key}) || $this->{'col_' . $key}->getValue() !== $value) {
+                $this->markDirty();
+            }
+
             $this->{'col_' . $key} = new $propertyClass($value);
         } catch (\Exception $e) {
+            // Fall back to dynamic properties
+            if (!isset($this->{$key}) || $this->{$key} !== $value) {
+                $this->markDirty();
+            }
             $this->{$key} = $value;
         }
     }
@@ -164,6 +176,21 @@ class DBO implements JsonSerializable
     public function empty()
     {
         return empty($this->primaryKeyValue) && $this->primaryKeyValue !== 0;
+    }
+
+    public function isDirty(): bool
+    {
+        return $this->_is_dirty;
+    }
+
+    public function markClean(): void
+    {
+        $this->_is_dirty = false;
+    }
+
+    public function markDirty(): void
+    {
+        $this->_is_dirty = true;
     }
 
 }
