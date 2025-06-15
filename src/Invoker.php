@@ -9,6 +9,7 @@ use obray\core\http\requests\CONNECTRequest;
 use obray\core\http\requests\CONSOLERequest;
 use obray\core\http\requests\DELETERequest;
 use obray\core\http\requests\GETRequest;
+use obray\core\http\requests\HEADRequest;
 use obray\core\http\requests\OPTIONSRequest;
 use obray\core\http\requests\PATCHRequest;
 use obray\core\http\requests\POSTRequest;
@@ -37,6 +38,12 @@ Class Invoker implements InvokerInterface
 
      public function invoke(ServerRequest $serverRequest, $object, $method, $params = [])
      {
+        // Convert parameter keys with hyphens to underscores
+        $normalizedParams = [];
+        foreach ($params as $key => $value) {
+            $normalizedKey = str_replace('-', '_', $key);
+            $normalizedParams[$normalizedKey] = $value;
+        }
          // reflect the object 
          try {
              $reflector = new \ReflectionClass($object);
@@ -55,7 +62,7 @@ Class Invoker implements InvokerInterface
          // support fully parameratized methods with default values
          $method_parameters = []; $hasNoDefault = false;
          forEach ($parameters as $parameter) {
-             $method_parameters[] = self::getParameterValue($params, $parameter, $serverRequest);
+             $method_parameters[] = self::getParameterValue($normalizedParams, $parameter, $serverRequest);
          }
          
          try{
@@ -123,7 +130,7 @@ Class Invoker implements InvokerInterface
             CONSOLERequest::class,
             DELETERequest::class,
             GETRequest::class,
-            HEADClass::class,
+            HEADRequest::class,
             OPTIONSRequest::class,
             PATCHRequest::class,
             POSTRequest::class,
