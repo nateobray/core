@@ -6,43 +6,58 @@ use obray\sessions\exceptions\SessionInitFailure;
 #[\AllowDynamicProperties]
 Class Session
 {
+    private function startForRead(): bool
+    {
+        if (\session_status() === PHP_SESSION_ACTIVE) {
+            return true;
+        }
+        if (\headers_sent($file, $line)) {
+            throw new SessionInitFailure("Cannot start session; headers already sent at $file:$line", 500);
+        }
+        return \session_start(['read_and_close' => true]);
+    }
+
+    private function startForWrite(): bool
+    {
+        if (\session_status() === PHP_SESSION_ACTIVE) {
+            return true;
+        }
+        if (\headers_sent($file, $line)) {
+            throw new SessionInitFailure("Cannot start session; headers already sent at $file:$line", 500);
+        }
+        return \session_start();
+    }
+
     public function get()
     {
-        if(\session_start()){
-            $session = (object) $_SESSION;
-            \session_write_close();
-            return $session;
+        if ($this->startForRead()) {
+            $data = isset($_SESSION) && is_array($_SESSION) ? $_SESSION : [];
+            return (object) $data;
         }
         throw new SessionInitFailure();
     }
 
     public function destroy()
     {
-        if(\session_start()){
+        if ($this->startForWrite()) {
             \session_destroy();
             \session_write_close();
             return;
         }
-        throw new \Exception("Unable to initialize session.",500);
+        throw new SessionInitFailure();
     }
 
     public function __get(string $name)
     {
-        if(\session_start()){
-            $value = NULL;
-            if(array_key_exists($name, $_SESSION)) {
-                $value = $_SESSION[$name];
-            }
-            \session_write_close();
-            return $value;
+        if ($this->startForRead()) {
+            return array_key_exists($name, $_SESSION) ? $_SESSION[$name] : null;
         }
         throw new SessionInitFailure();
     }
 
-    public function __set(string $name,$value)
+    public function __set(string $name, $value)
     {
-        
-        if(\session_start()){
+        if ($this->startForWrite()) {
             $_SESSION[$name] = $value;
             $this->{$name} = $value;
             \session_write_close();
@@ -51,19 +66,17 @@ Class Session
         throw new SessionInitFailure();
     }
 
-    public function __isset(string $name)
+    public function __isset(string $name): bool
     {
-        if(\session_start()){
-            $isSet = isSet($_SESSION[$name]);
-            \session_write_close();
-            return $isSet;
+        if ($this->startForRead()) {
+            return isset($_SESSION[$name]);
         }
-        throw new \Exception("Uanble to intialize session.",500);
+        throw new SessionInitFailure();
     }
 
     public function __unset(string $name)
     {
-        if(\session_start()){
+        if ($this->startForWrite()) {
             unset($_SESSION[$name]);
             \session_write_close();
             return;
