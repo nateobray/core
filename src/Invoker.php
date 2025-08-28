@@ -18,6 +18,7 @@ use obray\core\http\requests\TRACERequest;
 use obray\core\http\ServerRequest;
 use obray\core\http\StatusCode;
 use obray\core\interfaces\InvokerInterface;
+use Psr\Log\LoggerInterface;
 use TypeError;
 
 /**
@@ -26,6 +27,12 @@ use TypeError;
 
 Class Invoker implements InvokerInterface
 {
+    private ?LoggerInterface $logger;
+
+    public function __construct(?LoggerInterface $logger = null)
+    {
+        $this->logger = $logger;
+    }
     /**
      * The invoke method attempts to call a specified method on an object
      *
@@ -70,7 +77,9 @@ Class Invoker implements InvokerInterface
              return $object;
          } catch (TypeError $e){
              $message = $e->getMessage();
-             print_r($e);
+             if ($this->logger) {
+                 $this->logger->debug($message, ['exception' => $e]);
+             }
              if(
                  str_contains($message, 'must be of type ' . GETRequest::class) ||
                  str_contains($message, 'must be of type ' . POSTRequest::class) ||
