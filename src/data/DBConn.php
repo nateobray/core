@@ -7,7 +7,6 @@
 namespace obray\data;
 
 use obray\data\DBStatement;
-use obray\core\CoreProjectEnum;
 
 Class DBConn
 {
@@ -19,12 +18,16 @@ Class DBConn
     private string $db_name;
     private string $db_engine;
     private string $db_char_set;
+    private array $pdo_options;
 
     /**
      * @var \PDO The PDO Connection
      */
     private $conn;
     private $is_connected = false;
+    private static array $pool = [];
+    private ?string $dsn = null;
+    private ?string $pool_key = null;
 
     public function __construct(
         $host,
@@ -33,7 +36,8 @@ Class DBConn
         $db_name,
         $port = '3306',
         $db_engine = 'innoDB',
-        $char_set = "utf8"
+        $char_set = "utf8",
+        array $pdo_options = []
     ) {
         $this->host = $host;
         $this->username = $username;
@@ -42,31 +46,47 @@ Class DBConn
         $this->port = $port;
         $this->db_engine = $db_engine;
         $this->db_char_set = $char_set;
+        $this->pdo_options = $pdo_options + [
+            \PDO::ATTR_PERSISTENT => true,
+            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_EMULATE_PREPARES => false
+        ];
+        $this->buildDsn();
     }
 
     public function setUsername(string $username)
     {
         $this->username = $username;
+        $this->disconnect();
+        $this->buildDsn();
     }
 
     public function setPassword(string $password)
     {
         $this->password = $password;
+        $this->disconnect();
+        $this->buildDsn();
     }
 
     public function setHost($host)
     {
         $this->host = $host;
+        $this->disconnect();
+        $this->buildDsn();
     }
 
     public function setPort($port)
     {
         $this->port = $port;
+        $this->disconnect();
+        $this->buildDsn();
     }
 
     public function setDBName($name)
     {
         $this->db_name = $name;
+        $this->disconnect();
+        $this->buildDsn();
     }
 
     public function getDBName()
@@ -84,31 +104,57 @@ Class DBConn
         return $this->db_char_set;
     }
 
+    public function setOption(int $attribute, $value): void
+    {
+        $this->pdo_options[$attribute] = $value;
+        if ($this->is_connected) {
+            $this->conn->setAttribute($attribute, $value);
+        }
+    }
+
     /**
      * @param bool $reconnect
      * @return \PDO
      */
     public function connect($reconnect = false)
     {
-        $this->conn;
-        if (!isSet($this->conn) || $reconnect) {
-            try {
-                $this->conn = new \PDO(
-                    'mysql:host=' . $this->host . ';dbname=' . $this->db_name . ';charset=utf8',
-                    $this->username,
-                    $this->password,
-                    array(
-                        \PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8',
-                        \PDO::ATTR_PERSISTENT => true
-                    ));
-                $this->conn->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-                $this->is_connected = true;
-                
-            } catch (\PDOException $e) {
-                echo 'ERROR: ' . $e->getMessage();
-                exit();
+        if ($reconnect && $this->pool_key !== null) {
+            unset(self::$pool[$this->pool_key]);
+            $this->conn = null;
+            $this->is_connected = false;
+        }
+
+        if ($this->pool_key === null) {
+            $this->buildDsn();
+        }
+
+        if (!$this->is_connected) {
+            if (isset(self::$pool[$this->pool_key])) {
+                $this->conn = self::$pool[$this->pool_key];
+                try {
+                    $this->conn->query('SELECT 1');
+                    $this->is_connected = true;
+                } catch (\PDOException $e) {
+                    unset(self::$pool[$this->pool_key]);
+                    $this->conn = null;
+                }
+            }
+            if (!$this->is_connected) {
+                try {
+                    $this->conn = new \PDO(
+                        $this->dsn,
+                        $this->username,
+                        $this->password,
+                        $this->pdo_options
+                    );
+                    $this->is_connected = true;
+                    self::$pool[$this->pool_key] = $this->conn;
+                } catch (\PDOException $e) {
+                    throw $e;
+                }
             }
         }
+
         return $this->conn;
     }
 
@@ -177,8 +223,26 @@ Class DBConn
 
     public function disconnect() {
         if ($this->conn !== null) {
+            if ($this->pool_key !== null) {
+                unset(self::$pool[$this->pool_key]);
+                $this->pool_key = null;
+            }
             $this->conn = null;
             $this->is_connected = false;
         }
+    }
+
+    public function __destruct()
+    {
+        $this->disconnect();
+    }
+
+    private function buildDsn(): void
+    {
+        $this->dsn = 'mysql:host=' . $this->host
+            . ';port=' . $this->port
+            . ';dbname=' . $this->db_name
+            . ';charset=' . $this->db_char_set;
+        $this->pool_key = hash('sha256', $this->dsn . $this->username . $this->password);
     }
 }
