@@ -102,6 +102,7 @@ Class DBConn
                         \PDO::ATTR_PERSISTENT => true
                     ));
                 $this->conn->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+                $this->conn->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);
                 $this->is_connected = true;
                 
             } catch (\PDOException $e) {
