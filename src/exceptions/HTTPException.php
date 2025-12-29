@@ -7,7 +7,8 @@ class HTTPException extends \Exception
 
     public function add(string $message, $key = 'general')
     {
-        $errors['general'] = $message;
+        $this->errors[$key] = $message;
+        return $this;
     }
 
 }

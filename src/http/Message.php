@@ -19,16 +19,24 @@ use Psr\Http\Message\StreamInterface;
 
 class Message implements MessageInterface
 {
-    private string $version = '1.1';
-    private array $headers = [];
-    private Body $body;
+    protected string $version = '1.1';
+    protected array $headers = [];
+    protected array $headerNames = [];
+    protected ?StreamInterface $body = null;
 
-    public function __construct(array $headers = [], ?string $body = null, $version = '1.1')
+    public function __construct(array $headers = [], $body = null, $version = '1.1')
     {
         $this->version = $version;
-        $this->headers = array_change_key_case($headers, CASE_LOWER);
-        if(!empty($body)){
-            $this->body = new Body($body);
+        foreach ($headers as $name => $value) {
+            if (!is_string($name)) {
+                continue;
+            }
+            $this->setHeader($name, $value);
+        }
+        if ($body instanceof StreamInterface) {
+            $this->body = $body;
+        } elseif ($body !== null) {
+            $this->body = new Body((string)$body);
         }
     }
 
@@ -91,7 +99,12 @@ class Message implements MessageInterface
      */
     public function getHeaders()
     {
-        return $this->headers;
+        $headers = [];
+        foreach ($this->headers as $lower => $values) {
+            $original = $this->headerNames[$lower] ?? $lower;
+            $headers[$original] = $values;
+        }
+        return $headers;
     }
 
     /**
@@ -104,7 +117,7 @@ class Message implements MessageInterface
      */
     public function hasHeader($name)
     {
-        return isSet($this->headers[strtolower($name)]);
+        return isset($this->headers[strtolower($name)]);
     }
 
     /**
@@ -123,8 +136,8 @@ class Message implements MessageInterface
      */
     public function getHeader($name)
     {
-        if(!isSet($this->headers[strtolower($name)])) return '';
-        return $this->headers[strtolower($name)];
+        $lower = strtolower($name);
+        return $this->headers[$lower] ?? [];
     }
 
     /**
@@ -148,8 +161,11 @@ class Message implements MessageInterface
      */
     public function getHeaderLine($name)
     {
-        if(!isSet($this->headers[strtolower($name)])) return '';
-        return strtolower($name) . ': '  . $this->headers[strtolower($name)];
+        $values = $this->getHeader($name);
+        if (empty($values)) {
+            return '';
+        }
+        return implode(', ', $values);
     }
 
     /**
@@ -170,7 +186,7 @@ class Message implements MessageInterface
     public function withHeader($name, $value)
     {
         $nm = clone $this;
-        $nm->headers[strtolower($name)] = $value;
+        $nm->setHeader($name, $value);
         return $nm;
     }
 
@@ -193,8 +209,14 @@ class Message implements MessageInterface
     public function withAddedHeader($name, $value)
     {
         $nm = clone $this;
-        if(empty($nm->headers[strtolower($name)])) $nm->headers[strtolower($name)] = $value;
-        $nm->headers[strtolower($name)] .= ',' . $value;
+        $lower = strtolower($name);
+        $values = $nm->normalizeHeaderValue($value);
+        if (isset($nm->headers[$lower])) {
+            $nm->headers[$lower] = array_merge($nm->headers[$lower], $values);
+        } else {
+            $nm->headerNames[$lower] = $name;
+            $nm->headers[$lower] = $values;
+        }
         return $nm;
     }
 
@@ -213,7 +235,8 @@ class Message implements MessageInterface
     public function withoutHeader($name)
     {
         $nm = clone $this;
-        unset($nm->headers[strtolower($name)]);
+        $lower = strtolower($name);
+        unset($nm->headers[$lower], $nm->headerNames[$lower]);
         return $nm;
     }
 
@@ -224,7 +247,10 @@ class Message implements MessageInterface
      */
     public function getBody()
     {
-        return $this->body??'';
+        if ($this->body === null) {
+            $this->body = new Body();
+        }
+        return $this->body;
     }
 
     /**
@@ -245,5 +271,32 @@ class Message implements MessageInterface
         $nm = clone $this;
         $nm->body = $body;
         return $nm;
+    }
+
+    protected function setHeader(string $name, $value): void
+    {
+        $lower = strtolower($name);
+        $this->headerNames[$lower] = $name;
+        $this->headers[$lower] = $this->normalizeHeaderValue($value);
+    }
+
+    protected function normalizeHeaderValue($value): array
+    {
+        if (!is_array($value)) {
+            $value = [$value];
+        }
+        $normalized = [];
+        foreach ($value as $v) {
+            if (is_numeric($v) || is_bool($v)) {
+                $v = (string)$v;
+            } elseif (is_object($v) && method_exists($v, '__toString')) {
+                $v = (string)$v;
+            }
+            if (!is_string($v)) {
+                throw new \InvalidArgumentException('Header values must be strings.');
+            }
+            $normalized[] = trim($v);
+        }
+        return $normalized;
     }
 }

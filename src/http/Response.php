@@ -21,6 +21,7 @@ use Psr\Http\Message\ResponseInterface;
 class Response extends Message implements ResponseInterface
 {
     private int $code = StatusCode::OK;
+    private string $reasonPhrase = '';
 
     public function __construct(int $code = StatusCode::OK, array $headers = [], string $body = '', $version = '1.1')
     {
@@ -62,8 +63,12 @@ class Response extends Message implements ResponseInterface
      */
     public function withStatus($code, $reasonPhrase = '')
     {
+        if (!is_int($code) || $code < 100 || $code > 599) {
+            throw new \InvalidArgumentException('Invalid HTTP status code.');
+        }
         $nr = clone $this;
         $nr->code = $code;
+        $nr->reasonPhrase = (string)$reasonPhrase;
         return $nr;
     }
 
@@ -82,16 +87,18 @@ class Response extends Message implements ResponseInterface
      */
     public function getReasonPhrase()
     {
-        if(empty(StatusCode::REASONS[$this->code])) return '';
-        return StatusCode::REASONS[$this->code];
+        if ($this->reasonPhrase !== '') {
+            return $this->reasonPhrase;
+        }
+        return StatusCode::REASONS[$this->code] ?? '';
     }
 
     public function out()
     {
-        header("HTTP/" . $this->getProtocolVersion() . " " . $this->getStatusCode() . " " . StatusCode::REASONS[$this->getStatusCode()]);
-        forEach($this->getheaders() as $key => $header){
-            header($this->getHeaderLine($key));
+        header(sprintf("HTTP/%s %d %s", $this->getProtocolVersion(), $this->getStatusCode(), $this->getReasonPhrase()));
+        foreach ($this->getHeaders() as $name => $values) {
+            header(sprintf('%s: %s', $name, implode(', ', $values)), false);
         }
-        echo $this->getBody()->getContents();
+        echo (string)$this->getBody();
     }
 }

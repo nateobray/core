@@ -10,11 +10,15 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
     private array $cookies;
     private array $server;
     private array $params;
+    private array $uploadedFiles = [];
+    private $parsedBody = null;
+    private array $attributes = [];
 
     public function __construct($path = '', $params = [])
     {
         $method = Method::GET;
-        if(PHP_SAPI === 'cli' || !empty($_SERVER['argv'])){
+        $forceHttp = defined('OBRAY_FORCE_HTTP_REQUEST') && OBRAY_FORCE_HTTP_REQUEST;
+        if((PHP_SAPI === 'cli' || !empty($_SERVER['argv'])) && !$forceHttp){
             if(empty($_SERVER['argv'][1])) throw new \Exception("Console dedected, but no path specified.");
             $uri = $_SERVER['argv'][1];
             if(!empty($path)) $uri = $path;
@@ -108,7 +112,8 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
     public function withCookieParams(array $cookies)
     {
         $nsr = clone $this;
-        $this->cooks = array_merge($this->cookies, $cookies);
+        $nsr->cookies = $cookies;
+        return $nsr;
     }
 
     public function getQueryParams()
@@ -118,47 +123,60 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
 
     public function withQueryParams(array $query)
     {
-
+        $nsr = clone $this;
+        $nsr->params = $query;
+        return $nsr;
     }
 
     public function getUploadedFiles()
     {
-
+        return $this->uploadedFiles;
     }
 
     public function withUploadedFiles(array $uploadedFiles)
     {
-
+        $nsr = clone $this;
+        $nsr->uploadedFiles = $uploadedFiles;
+        return $nsr;
     }
 
     public function getParsedBody()
     {
-
+        return $this->parsedBody;
     }
 
     public function withParsedBody($data)
     {
-
+        if (!is_array($data) && !is_object($data) && $data !== null) {
+            throw new \InvalidArgumentException('Parsed body must be array, object, or null.');
+        }
+        $nsr = clone $this;
+        $nsr->parsedBody = $data;
+        return $nsr;
     }
 
     public function getAttributes()
     {
-
+        return $this->attributes;
     }
 
     public function getAttribute($name, $default = null)
     {
-
+        return $this->attributes[$name] ?? $default;
     }
 
     public function withAttribute($name, $value)
     {
-
+        $nsr = clone $this;
+        $nsr->attributes[$name] = $value;
+        return $nsr;
     }
 
     public function withoutAttribute($name)
     {
-
+        $nsr = clone $this;
+        unset($nsr->attributes[$name]);
+        return $nsr;
     }
 
     public function jsonSerialize(): mixed
@@ -176,14 +194,15 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
         if(!empty($params)) $obj->params = $params;
         // attach body
         $body = $this->getBody();
-        if(!empty($body)) $obj->body = $body;
+        if(!empty($body)) $obj->body = (string)$body;
         return $obj;
     }
 
     public static function createRequest(string $path = '', array $params = [])
     {
         try {
-            if((empty($_SERVER['REQUEST_METHOD']) || !empty($_REQUEST['TENANT'])) && (PHP_SAPI === 'cli' || !empty($_SERVER['argv']) || !empty($_REQUEST['TENANT'])) ){
+            $forceHttp = defined('OBRAY_FORCE_HTTP_REQUEST') && OBRAY_FORCE_HTTP_REQUEST;
+            if((empty($_SERVER['REQUEST_METHOD']) || !empty($_REQUEST['TENANT'])) && (PHP_SAPI === 'cli' || !empty($_SERVER['argv']) || !empty($_REQUEST['TENANT'])) && !$forceHttp ){
                 $method = 'CONSOLE';
             } else {
                 $method = $_SERVER['REQUEST_METHOD'];

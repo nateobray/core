@@ -17,6 +17,7 @@ use obray\core\interfaces\EncoderInterface;
 use obray\core\interfaces\FactoryInterface;
 use obray\core\interfaces\InvokerInterface;
 use obray\core\interfaces\PermissionsInterface;
+use obray\users\NullPermissionHandler;
 use Psr\Container\ContainerInterface;
 
 /**
@@ -38,11 +39,12 @@ Class Router
     public $invoker;
     public $container;
     private bool $debug_mode;
-    private EncoderInterface $encoder;
+    private ?EncoderInterface $encoder = null;
     private PermissionsInterface $permHandler;
-    private ServerRequest $ServerRequest;
-    private EncoderInterface $errorEncoder;
-    private EncoderInterface $consoleEncoder;
+    private ?ServerRequest $ServerRequest = null;
+    private ?EncoderInterface $errorEncoder = null;
+    private ?EncoderInterface $consoleEncoder = null;
+    private $lastResponse = null;
     protected $content_type;
     
     /**
@@ -69,6 +71,7 @@ Class Router
         $this->invoker = $invoker;
         $this->container = $container;
         $this->debug_mode = $debug;
+        $this->permHandler = new NullPermissionHandler();
     }
 
     /**
@@ -78,7 +81,7 @@ Class Router
      * @param string $path This is the path to the object, usually passed from a URI, but could also 
      * come from the console argument
      * 
-     * @return never
+     * @return Response|null
      */
     public function route($path = '', $params = [], bool $repressResponse = false)
     {
@@ -97,7 +100,7 @@ Class Router
             $obj = $this->searchForController($path_array, $this->ServerRequest->getQueryParams());
             if(method_exists($obj, 'getCode')) $code = $obj->getCode();
             if($this->ServerRequest->getMethod() === Method::CONSOLE){
-                $this->encoder = new ($this->consoleEncoder)();
+                $this->encoder = $this->resolveConsoleEncoder();
             } else {
                 $this->setEncoderByClassProperty($obj);
             }
@@ -107,28 +110,26 @@ Class Router
             // get the status code from the exception
             $code = $e->getCode();
             // use the error encoder
-            $this->encoder = $this->errorEncoder;
+            $this->encoder = $this->resolveErrorEncoder(true);
+            $this->content_type = $this->encoder->getContentType();
         } catch (\Exception $e) {
             // make our object the exception
             $obj = $e;
             // since we don't know what kind of exception we're dealing with, go with code 500
             $code = StatusCode::INTERNAL_SERVER_ERROR;
             // use the error encoder
-            if(!empty($this->errorEncoder)){
-                $this->encoder = $this->errorEncoder;
-            } else {
-                throw $e;
-            }
+            $this->encoder = $this->resolveErrorEncoder(true);
+            $this->content_type = $this->encoder->getContentType();
         }
         
         // at this point if we don't have an encoder, we're going to throw and exception
-        if (empty($this->encoder)) {
+        if ($this->encoder === null) {
             header('Content-Type: text/html' );
             throw new \Exception("Unable to find encoder for this request.");
         }
         
         // encode our response with the selected encoder
-        $encoded = $this->encoder->encode($obj, $this->start_time, $this->debug_mode);
+        $encoded = $this->encodeResponse($this->encoder, $obj);
         
         // output if we're in console
         if($this->ServerRequest->getMethod() === Method::CONSOLE){
@@ -136,17 +137,30 @@ Class Router
                 $this->encoder->out($encoded);
                 exit();
             }
+            $this->lastResponse = [
+                'code' => $code,
+                'contentType' => $this->encoder->getContentType(),
+                'body' => self::normalizeEncodedOutput($encoded)
+            ];
             return;
         }
+        
+        $normalizedBody = self::normalizeEncodedOutput($encoded);
+        $this->lastResponse = [
+            'code' => $code,
+            'contentType' => $this->encoder->getContentType(),
+            'body' => $normalizedBody
+        ];
         
         // output HTTP response
         $response = new Response($code, [
             'Content-Type' => $this->encoder->getContentType()
-        ], $encoded);
+        ], $normalizedBody);
         if(!$repressResponse){
             $response->out();
             exit();
         }
+        return $response;
     }
 
     /**
@@ -169,6 +183,8 @@ Class Router
         if( $depth > 20 ){ throw new \Exception("Depth limit for controller search reached.",500); }
 
         // setup path to controller class
+        $object = null;
+        $obray_path = '';
         if(empty($path_array)){
             $path = 'controllers\\' . 'Index';
             $method = '';
@@ -203,7 +219,7 @@ Class Router
             return $obj;
         
         // check if obray/core path exists, if so create the obray/core object
-        } elseif (class_exists('\\' . $obray_path)){
+        } elseif (!empty($obray_path) && class_exists('\\' . $obray_path)){
             $path_array = explode('\\', $obray_path);
             $params["remaining"] = $remaining;
             try{
@@ -242,7 +258,7 @@ Class Router
         $this->startingPath = '\\' . implode('\\',$path_array);
         $obj = $this->factory->make('\\' . implode('\\',$path_array));
 
-        if(!$direct) $this->permHandler->checkPermissions($obj, null);
+        if(!$direct && $this->permHandler !== null) $this->permHandler->checkPermissions($obj, null);
         if( !empty($method) ){
             $this->invoke($obj, $method, $params, $direct);
         } else {
@@ -268,7 +284,7 @@ Class Router
     {    
         if($method === 'index') $method = strtolower($this->ServerRequest->getMethod());
         if(method_exists($obj,$method)){
-            if(!$direct) $this->permHandler->checkPermissions($obj, $method);
+            if(!$direct && $this->permHandler !== null) $this->permHandler->checkPermissions($obj, $method);
             $this->invoker->invoke($this->ServerRequest, $obj, $method, $params);
             return;
         } else {
@@ -287,10 +303,11 @@ Class Router
      */
     private function setEncoderByClassProperty($obj): bool
     {
-        forEach ($obj as $key => $value) {
+        foreach ($obj as $key => $value) {
             if (array_key_exists($key, $this->encodersByClassProperty)) {
-                $this->encoder = $this->encodersByClassProperty[$key];
-                $this->content_type = $this->encoder->getContentType();
+                $encoderConfig = $this->encodersByClassProperty[$key];
+                $this->encoder = $encoderConfig['encoder'];
+                $this->content_type = $encoderConfig['contentType'] ?? $this->encoder->getContentType();
 		        return true;
             }
         }
@@ -306,10 +323,22 @@ Class Router
      * 
      * @return void
      */
-    public function addEncoder(EncoderInterface $encoder, string $property, string $content_type): void
+    public function addEncoder($encoder, string $property, string $content_type): void
     {
-        $this->encodersByClassProperty[$property] = $encoder;
-        $this->encodersByContentType[$content_type] = $encoder;
+        $encoderInstance = $this->resolveEncoder($encoder);
+        $this->encodersByClassProperty[$property] = [
+            'encoder' => $encoderInstance,
+            'contentType' => $content_type
+        ];
+        $this->encodersByContentType[$content_type] = $encoderInstance;
+
+        if ($property === 'error' && $this->errorEncoder === null) {
+            $this->errorEncoder = $encoderInstance;
+        }
+
+        if ($property === 'console' && $this->consoleEncoder === null) {
+            $this->consoleEncoder = $encoderInstance;
+        }
     }
 
     /**
@@ -319,12 +348,20 @@ Class Router
      * 
      * @return void
      */
-    public function setErrorEncoder(EncoderInterface $encoder): void
+    public function setErrorEncoder($encoder, ?string $property = null, ?string $content_type = null): void
     {
+        $instance = $this->resolveEncoder($encoder);
         set_error_handler([$this, 'errorHandler']);
-        register_shutdown_function([Router::class, "fatalHandler"], $encoder, $this->start_time);
-        
-        $this->errorEncoder = $encoder;
+        register_shutdown_function([Router::class, "fatalHandler"], $instance, $this->start_time);
+        $this->errorEncoder = $instance;
+
+        if ($property !== null && $content_type !== null) {
+            $this->encodersByClassProperty[$property] = [
+                'encoder' => $instance,
+                'contentType' => $content_type
+            ];
+            $this->encodersByContentType[$content_type] = $instance;
+        }
     }
 
     /**
@@ -334,9 +371,18 @@ Class Router
      * 
      * @return void
      */
-    public function setConsoleEncoder(EncoderInterface $encoder): void
+    public function setConsoleEncoder($encoder, ?string $property = null, ?string $content_type = null): void
     {
-        $this->consoleEncoder = $encoder;
+        $instance = $this->resolveEncoder($encoder);
+        $this->consoleEncoder = $instance;
+
+        if ($property !== null && $content_type !== null) {
+            $this->encodersByClassProperty[$property] = [
+                'encoder' => $instance,
+                'contentType' => $content_type
+            ];
+            $this->encodersByContentType[$content_type] = $instance;
+        }
     }
 
     /**
@@ -374,19 +420,19 @@ Class Router
         $error->setFile($error_file);
         $error->setLine($error_line);
         if(!empty($this->ServerRequest)) $error->setServerRequest($this->ServerRequest);
-        $encoded = $this->errorEncoder->encode($error, null, true);
-        
-        // output HTTP response
-        if(is_string($encoded)){
-            $response = new Response(500, [
-                'Content-Type' => $this->errorEncoder->getContentType()
-            ], $encoded);
-            $response->out();
-            exit();
-        } else {
+        $errorEncoder = $this->resolveErrorEncoder(true);
+        $encoded = $this->encodeResponse($errorEncoder, $error);
+        if ($this->ServerRequest && $this->ServerRequest->getMethod() === Method::CONSOLE) {
             Helpers::console($encoded);
-            throw new \Exception($encoded->error??'An exception has ocurred');
+            throw new \Exception($error->getMessage());
         }
+
+        $normalized = self::normalizeEncodedOutput($encoded);
+        $response = new Response(500, [
+            'Content-Type' => $errorEncoder->getContentType()
+        ], $normalized);
+        $response->out();
+        exit();
     }
 
     static public function fatalHandler(EncoderInterface $encoder, $startTime) 
@@ -409,15 +455,95 @@ Class Router
             $error->setFile($errfile);
             $error->setLine($errline);
             
-            $encoded = $encoder->encode($error, $startTime, true);
+            $encoded = self::invokeEncoder($encoder, $error, $startTime, true);
+            $normalized = self::normalizeEncodedOutput($encoded);
             
             // output HTTP response
             $response = new Response(500, [
                 'Content-Type' => $encoder->getContentType()
-            ], $encoded);
+            ], $normalized);
             $response->out();
             exit();
         }
+    }
+
+    public function getLastResponse()
+    {
+        return $this->lastResponse;
+    }
+
+    private function resolveEncoder($encoder): EncoderInterface
+    {
+        if ($encoder instanceof EncoderInterface) {
+            return $encoder;
+        }
+
+        if (is_callable($encoder) && !is_string($encoder)) {
+            $encoder = $encoder();
+        }
+
+        if (is_string($encoder)) {
+            if (!class_exists($encoder)) {
+                throw new \InvalidArgumentException("Encoder class {$encoder} does not exist.");
+            }
+            $encoder = new $encoder();
+        }
+
+        if (!$encoder instanceof EncoderInterface) {
+            throw new \InvalidArgumentException("Encoder must implement " . EncoderInterface::class . ".");
+        }
+
+        return $encoder;
+    }
+
+    private function resolveConsoleEncoder(): EncoderInterface
+    {
+        if ($this->consoleEncoder !== null) {
+            return $this->consoleEncoder;
+        }
+        $this->consoleEncoder = $this->resolveEncoder(\obray\core\encoders\ConsoleEncoder::class);
+        return $this->consoleEncoder;
+    }
+
+    private function resolveErrorEncoder(bool $fallbackToDefault = false): EncoderInterface
+    {
+        if ($this->errorEncoder !== null) {
+            return $this->errorEncoder;
+        }
+        if ($fallbackToDefault) {
+            $this->errorEncoder = $this->resolveEncoder(\obray\core\encoders\ErrorEncoder::class);
+            set_error_handler([$this, 'errorHandler']);
+            register_shutdown_function([Router::class, "fatalHandler"], $this->errorEncoder, $this->start_time);
+            return $this->errorEncoder;
+        }
+        throw new \Exception("Unable to find error encoder for this request.");
+    }
+
+    private function encodeResponse(EncoderInterface $encoder, $data)
+    {
+        return self::invokeEncoder($encoder, $data, $this->start_time, $this->debug_mode);
+    }
+
+    private static function invokeEncoder(EncoderInterface $encoder, $data, $startTime, $debugMode = false)
+    {
+        $method = new \ReflectionMethod($encoder, 'encode');
+        $parameterCount = $method->getNumberOfParameters();
+        if ($parameterCount >= 3) {
+            return $encoder->encode($data, $startTime, $debugMode);
+        }
+        return $encoder->encode($data, $startTime);
+    }
+
+    private static function normalizeEncodedOutput($encoded): string
+    {
+        if (is_string($encoded)) {
+            return $encoded;
+        }
+        $json = json_encode($encoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            return (string)$encoded;
+        }
+        return $json;
     }
 
 }

@@ -14,6 +14,23 @@ class Table
     private $tableCreationCount = 0;
     private $tablesCreated = [];
     private $tables = [];
+    private $migrationSummary = [
+        'tables_checked' => 0,
+        'tables_current' => 0,
+        'tables_with_changes' => 0,
+        'columns_checked' => 0,
+        'columns_missing' => 0,
+        'columns_mismatched' => 0,
+        'foreign_keys_missing' => 0,
+        'seeds_inserted' => 0,
+        'seeds_updated' => 0
+    ];
+    private bool $dryRun = false;
+    private bool $quiet = false;
+    private bool $verbose = false;
+    private bool $skipSeeds = false;
+    private bool $seedsOnly = false;
+    private ?array $tableFilter = null;
 
     public function __construct(DBConn $DBConn)
     {
@@ -29,11 +46,47 @@ class Table
      * @param bool $printTable Prints table path to console
      * @param bool $printSQL Prints table create sql to console
      * @param bool $printSeed Prints seed data to console
+     * @param bool $dry_run Skip executing SQL and only print it
+     * @param bool $quiet Suppress non-essential output (still shows changes/errors/summary)
+     * @param bool $verbose Force table/sql/seed output
+     * @param string $tables Comma separated list of table names to include (others skipped)
+     * @param bool $skip_seeds Skip seeding entirely
+     * @param bool $seeds_only Only run seeds, skip schema changes/creation
      * 
      * @return void
      */
-    public function migrate(bool $printTable = false, bool $printSQL = false, bool $printSeeds = false, $debug = false) : void
+    public function migrate(
+        bool $printTable = false,
+        bool $printSQL = false,
+        bool $printSeeds = false,
+        $debug = false,
+        bool $dry_run = false,
+        bool $quiet = false,
+        bool $verbose = false,
+        string $tables = '',
+        bool $skip_seeds = false,
+        bool $seeds_only = false
+    ) : void
     {
+        // normalize flags from CLI query params
+        $this->dryRun = filter_var($dry_run, FILTER_VALIDATE_BOOLEAN);
+        $this->quiet = filter_var($quiet, FILTER_VALIDATE_BOOLEAN);
+        $this->verbose = filter_var($verbose, FILTER_VALIDATE_BOOLEAN);
+        $this->skipSeeds = filter_var($skip_seeds, FILTER_VALIDATE_BOOLEAN);
+        $this->seedsOnly = filter_var($seeds_only, FILTER_VALIDATE_BOOLEAN);
+        if(!empty($tables)){
+            $this->tableFilter = array_map('strtolower', array_map('trim', explode(',', $tables)));
+        }
+        if($this->quiet && !$this->verbose){
+            $printTable = false;
+            $printSQL = false;
+            $printSeeds = false;
+        }
+        if($this->verbose){
+            $printTable = true;
+            $printSQL = true;
+            $printSeeds = true;
+        }
 
         // get a list of existing tables
         $stmt = $this->DBConn->query("SELECT * 
@@ -49,25 +102,60 @@ class Table
         $this->createTablesFromModelsFolder('/', $printTable, $printSQL, $printSeeds);
 
         // Manually create Tables that live in obray/src/users/
-        Helpers::console("%s", "**** Tables from core ****" . "\n", "RedBackground");
+        if(!$this->quiet){
+            Helpers::console("%s", "**** Tables from core ****" . "\n", "RedBackground");
+        }
         $this->create('obray\users\RolePermission', $printTable, $printSQL, $printSeeds);
         $this->create('obray\users\Role', $printTable, $printSQL, $printSeeds);
         $this->create('obray\users\UserRole', $printTable, $printSQL, $printSeeds);
         $this->create('obray\users\UserPermission', $printTable, $printSQL, $printSeeds);
 
-        Helpers::console("%s", "\nWARNING: Currently only supports creating tables from models, WILL NOT UPDATE TABLES. \n", "YellowBold");
+        // Deprecated warning removed
 
-        Helpers::console("%s","\n ********* Tables Created (" . $this->tableCreationCount . ") **********\n", "GreenBold");
-        if(empty($this->tablesCreated)){
-            Helpers::console("%s","\n\t No tables created\n\n", "GreenBold");
-        }
-        sort($this->tablesCreated);
-        forEach($this->tablesCreated as $createdTable){
-            Helpers::console("%s","\t $createdTable\n", "GreenBold");
+        if(!$this->quiet){
+            Helpers::console("%s","\n ********* Tables Created (" . $this->tableCreationCount . ") **********\n", "GreenBold");
+            if(empty($this->tablesCreated)){
+                Helpers::console("%s","\n\t No tables created\n\n", "GreenBold");
+            }
+            sort($this->tablesCreated);
+            forEach($this->tablesCreated as $createdTable){
+                Helpers::console("%s","\t $createdTable\n", "GreenBold");
+            }
         }
 
         // Manually fix order of Users table
-        $this->fixUserTableOrder();
+        if(!$this->dryRun && !$this->seedsOnly){
+            $this->fixUserTableOrder();
+        }
+
+        // Print concise summary
+        Helpers::console("%s", "\nMigration Summary\n\n", "GreenBold");
+        Helpers::console(
+            "%s",
+            sprintf(
+                "\tTables: %d checked | %d current | %d with changes\n",
+                $this->migrationSummary['tables_checked'],
+                $this->migrationSummary['tables_current'],
+                $this->migrationSummary['tables_with_changes']
+            )
+        );
+        Helpers::console(
+            "%s",
+            sprintf(
+                "\tColumns: %d checked | %d missing | %d mismatched\n",
+                $this->migrationSummary['columns_checked'],
+                $this->migrationSummary['columns_missing'],
+                $this->migrationSummary['columns_mismatched']
+            )
+        );
+        Helpers::console(
+            "%s",
+            sprintf("\tForeign keys missing: %d\n", $this->migrationSummary['foreign_keys_missing'])
+        );
+        Helpers::console(
+            "%s",
+            sprintf("\tSeeds applied: %d inserts | %d updates\n\n", $this->migrationSummary['seeds_inserted'], $this->migrationSummary['seeds_updated'])
+        );
     }
 
      /**
@@ -121,7 +209,25 @@ class Table
      */
     public function create(string $class, bool $printTable = true, bool $printSQL = true, bool $printSeeds = true) : void
     {
-        $this->disableConstraints();
+        $table = self::getTable($class);
+        if($this->tableFilter !== null && !in_array(strtolower($table), $this->tableFilter)) return;
+
+        $columns = self::getColumns($class);
+
+        if($this->seedsOnly){
+            if(in_array($class::TABLE, $this->tables) && !$this->skipSeeds && !$this->dryRun){
+                if(defined($class . '::KEEP_SEEDS_CURRENT') && defined($class . '::SEED_FILE')){
+                    $this->seedFile($class, $printSeeds);
+                }
+        
+                if(defined($class . '::KEEP_SEEDS_CURRENT') && defined($class . '::SEED_CONSTANTS')){
+                    $this->seedConstants($class, $columns, $printSeeds);
+                }
+            }
+            return;
+        }
+
+        if(!$this->dryRun) $this->disableConstraints();
 
         $reflection = new \ReflectionClass($class);
         $properties = $reflection->getProperties();
@@ -129,22 +235,17 @@ class Table
         $keys = [];
         $constraints = [];
 
-        $table = self::getTable($class);
-        
-
         $columnSQL = [];
-        $columns = self::getColumns($class);
 
         if(in_array($class::TABLE, $this->tables)){
-            Helpers::console("%s", $class::TABLE . " already exists\n", "RedBold");
 
             $this->updateTable($class::TABLE, $class);
             
-            if(defined($class . '::KEEP_SEEDS_CURRENT') && defined($class . '::SEED_FILE')){
+            if(!$this->skipSeeds && !$this->dryRun && defined($class . '::KEEP_SEEDS_CURRENT') && defined($class . '::SEED_FILE')){
                 $this->seedFile($class, $printSeeds);
             }
     
-            if(defined($class . '::KEEP_SEEDS_CURRENT') && defined($class . '::SEED_CONSTANTS')){
+            if(!$this->skipSeeds && !$this->dryRun && defined($class . '::KEEP_SEEDS_CURRENT') && defined($class . '::SEED_CONSTANTS')){
                 $this->seedConstants($class, $columns, $printSeeds);
             }
 
@@ -193,23 +294,28 @@ class Table
 
         $sql .= "\n".') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;' . "\n\n";
 
-        if($printSQL) Helpers::console("%s","\n" . $sql . "\n","Blue");
+        if($printSQL || $this->dryRun) Helpers::console("%s","\n" . $sql . "\n","Blue");
 
-        $this->DBConn->query($sql);
+        if($this->dryRun){
+            Helpers::console("%s", "[DRY RUN] Skipping CREATE TABLE execution for {$table}\n", "Yellow");
+        } else {
+            $this->DBConn->query($sql);
+        }
 
-        if(defined($class . '::SEED_FILE')){
+        if(!$this->skipSeeds && !$this->dryRun && defined($class . '::SEED_FILE')){
             $this->seedFile($class, $printSeeds);
         }
 
-        if(defined($class . '::SEED_CONSTANTS')){
+        if(!$this->skipSeeds && !$this->dryRun && defined($class . '::SEED_CONSTANTS')){
             $this->seedConstants($class, $columns, $printSeeds);
         }
 
-        $this->enableConstraints();
+        if(!$this->dryRun) $this->enableConstraints();
     }
 
     private function updateTable($table, $class)
     {
+        $this->migrationSummary['tables_checked']++;
         //print_r($class . "\n");
         $classCols = $this->getColumns($class);
         
@@ -222,7 +328,7 @@ class Table
             // Use regex to capture column details
             //$pattern = '/\s*`(\w+)`\s+(\w+)(?:\((\d+)(?:,\s*(\d+))?\))?\s*(unsigned)?\s*(NOT NULL)?\s*(AUTO_INCREMENT)?\s*(DEFAULT\s*(?:NULL|CURRENT_TIMESTAMP|\'[^\']*\'))?(?:\s*ON UPDATE CURRENT_TIMESTAMP)?,?/i';
             //$pattern = '/\s*`(\w+)`\s+(\w+)(?:\((\d+)(?:,\s*(\d+))?\))?\s*(unsigned)?\s*(?:COLLATE\s+\w+)?\s*(NOT NULL)?\s*(AUTO_INCREMENT)?\s*(DEFAULT\s*(?:NULL|CURRENT_TIMESTAMP|\'[^\']*\'))?(?:\s*ON UPDATE CURRENT_TIMESTAMP)?,?/i';
-            $pattern = '/\s*`(\w+)`\s+(\w+)(?:\((\d+)(?:,\s*(\d+))?\))?\s*(unsigned)?\s*(?:CHARACTER SET\s+\w+)?\s*(?:COLLATE\s+\w+)?\s*(NOT NULL)?\s*(AUTO_INCREMENT)?\s*(DEFAULT\s*(?:NULL|CURRENT_TIMESTAMP|\'[^\']*\'))?(?:\s*ON UPDATE CURRENT_TIMESTAMP)?,?/i';
+            $pattern = '/^\s*`(\w+)`\s+(\w+)(?:\((\d+)(?:,\s*(\d+))?\))?\s*(unsigned)?\s*(?:CHARACTER SET\s+\w+)?\s*(?:COLLATE\s+\w+)?\s*(NOT NULL)?\s*(AUTO_INCREMENT)?\s*(DEFAULT\s*(?:NULL|CURRENT_TIMESTAMP|\'[^\']*\'))?(?:\s*ON UPDATE CURRENT_TIMESTAMP)?,?/im';
 
             $primaryKeyPattern = '/PRIMARY KEY \(`([^`]+)`\)/';
 
@@ -235,6 +341,7 @@ class Table
             foreach ($matches as $match) {
                 if (!empty($match[2]) && $match[2] == 'FOREIGN') continue;
                 $column = [
+                    'raw' => $match[0],
                     'name' => $match[1],
                     'type' => $match[2],
                     'length' => !empty($match[3]) ? $match[3] : ($match[2] == 'int' ? 11 : null),
@@ -258,6 +365,9 @@ class Table
                 }
             }
 
+            $this->migrationSummary['columns_checked'] += count($columns);
+            $tableChanges = 0;
+
             if(!empty($newCols)){
                 forEach($newCols as $newCol){
 
@@ -266,6 +376,8 @@ class Table
                     Helpers::console("%s", " is missing column ");
                     Helpers::console("%s", str_replace('col_', '', $newCol->name) . ": \n\n", "YellowBold");
                     
+                    $this->migrationSummary['columns_missing']++;
+                    $tableChanges++;
                     $this->addColumn($table, ($newCol->propertyClass)::createSQL(str_replace('col_', '', $newCol->name)));
                 }
             }
@@ -302,7 +414,10 @@ class Table
                     Helpers::console("%s", 'obray\\data\\types\\' . $type . "\n", "Blue");
                     Helpers::console("%s", "\tDefined Data Type: ");
                     Helpers::console("%s", $selectedClassCol->propertyClass . "\n\n", "Blue");
+                    Helpers::console("%s", "\tParsed Column Details -> type: {$column['type']}, length: {$column['length']}, precision: " . ($column['precision'] ?? 'null') . ", unsigned: " . ($column['unsigned'] ? 'true' : 'false') . ", default: " . ($column['default'] ?? 'null') . "\n\n", "PurpleMuted");
 
+                    $this->migrationSummary['columns_mismatched']++;
+                    $tableChanges++;
                     $this->alterTable($table, ($selectedClassCol->propertyClass)::createSQL(str_replace('col_', '', $selectedClassCol->name)));
                 };
                 
@@ -352,11 +467,18 @@ class Table
                     helpers::console("%s", $newForeignKey[2] . "\n\n", "YellowBold");
 
                     $foreign = SQLForeignKey::createSQL(...$newForeignKey);
+                    $this->migrationSummary['foreign_keys_missing']++;
+                    $tableChanges++;
                     $this->addForeignKey($table, $foreign[1]);
                 }
             }
 
             //print_r($columns);
+            if($tableChanges === 0){
+                $this->migrationSummary['tables_current']++;
+            } else {
+                $this->migrationSummary['tables_with_changes']++;
+            }
         }
         
         
@@ -369,6 +491,10 @@ class Table
         Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
         Helpers::console("%s", "\t" . $alterSql . "\n\n");
         Helpers::console("%s", "*** SQL TO EXECUTE END ***\n\n\n", "WhiteBold");
+        if($this->dryRun){
+            Helpers::console("%s", "[DRY RUN] No changes executed.\n\n", "Yellow");
+            return;
+        }
         // Prompt the user for confirmation
         echo "Are you sure you want to make changes? (y/n): ";
         $userInput = trim(fgets(STDIN)); // Read user input from the standard input
@@ -376,7 +502,18 @@ class Table
         // Check if the user input is "y" or "Y"
         if (strtolower($userInput) === 'y') {
             echo "Proceeding with changes...\n";
-            $this->DBConn->run($alterSql);
+            try {
+                $this->DBConn->run($alterSql);
+            } catch (\Throwable $e) {
+                Helpers::console("%s", "Error executing SQL:\n", "RedBold");
+                Helpers::console("%s", $e->getMessage() . "\n", "Red");
+                echo "Continue? (y/n): ";
+                $continue = trim(fgets(STDIN));
+                if (strtolower($continue) !== 'y') {
+                    echo "Stopping on error.\n";
+                    exit(1);
+                }
+            }
         } else {
             echo "Operation cancelled.\n";
         }
@@ -389,6 +526,10 @@ class Table
         Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
         Helpers::console("%s", "\t" . $alterSql . "\n\n");
         Helpers::console("%s", "*** SQL TO EXECUTE END ***\n\n\n", "WhiteBold");
+        if($this->dryRun){
+            Helpers::console("%s", "[DRY RUN] No changes executed.\n\n", "Yellow");
+            return;
+        }
         // Prompt the user for confirmation
         echo "Are you sure you want to make changes? (y/n): ";
         $userInput = trim(fgets(STDIN)); // Read user input from the standard input
@@ -396,7 +537,18 @@ class Table
         // Check if the user input is "y" or "Y"
         if (strtolower($userInput) === 'y') {
             echo "Proceeding with changes...\n";
-            $this->DBConn->run($alterSql);
+            try {
+                $this->DBConn->run($alterSql);
+            } catch (\Throwable $e) {
+                Helpers::console("%s", "Error executing SQL:\n", "RedBold");
+                Helpers::console("%s", $e->getMessage() . "\n", "Red");
+                echo "Continue? (y/n): ";
+                $continue = trim(fgets(STDIN));
+                if (strtolower($continue) !== 'y') {
+                    echo "Stopping on error.\n";
+                    exit(1);
+                }
+            }
         } else {
             echo "Operation cancelled.\n";
         }
@@ -408,6 +560,10 @@ class Table
         Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
         Helpers::console("%s", "\t" . $alterSql . "\n\n");
         Helpers::console("%s", "*** SQL TO EXECUTE END ***\n\n\n", "WhiteBold");
+        if($this->dryRun){
+            Helpers::console("%s", "[DRY RUN] No changes executed.\n\n", "Yellow");
+            return;
+        }
         // Prompt the user for confirmation
         echo "Are you sure you want to make changes? (y/n): ";
         $userInput = trim(fgets(STDIN)); // Read user input from the standard input
@@ -415,7 +571,18 @@ class Table
         // Check if the user input is "y" or "Y"
         if (strtolower($userInput) === 'y') {
             echo "Proceeding with changes...\n";
-            $this->DBConn->run($alterSql);
+            try {
+                $this->DBConn->run($alterSql);
+            } catch (\Throwable $e) {
+                Helpers::console("%s", "Error executing SQL:\n", "RedBold");
+                Helpers::console("%s", $e->getMessage() . "\n", "Red");
+                echo "Continue? (y/n): ";
+                $continue = trim(fgets(STDIN));
+                if (strtolower($continue) !== 'y') {
+                    echo "Stopping on error.\n";
+                    exit(1);
+                }
+            }
         } else {
             echo "Operation cancelled.\n";
         }
@@ -424,8 +591,12 @@ class Table
 
     private function getType($column)
     {
-        switch($column['type'])
+        // Normalize the type so comparisons are consistent and add a fallback for unknown types
+        $type = strtolower(trim((string)$column['type']));
+
+        switch($type)
         {
+            case 'timestamp':
             case 'datetime':
                 if($column['default'] == 'DEFAULT CURRENT_TIMESTAMP') return 'DateTimeCreated';
                 if($column['on_update'] == 'CURRENT_TIMESTAMP') return 'DateTimeModified';
@@ -454,20 +625,29 @@ class Table
                 return 'BooleanTrue';
             case 'text':
                 return 'Text';
-            case 'decimal':
-                $type = 'Decimal';
-                if (!empty($column['precision']) && $column['precision'] != 2) {
-                    $type .= $column['precision'];
-                }
-                if (!$column['not_null']) $type .= 'Nullable';
-                return $type;
-                break;
+        case 'decimal':
+            // Prefer the precision captured, but fall back to parsing the raw column definition
+            $scale = $column['precision'];
+            if($scale === null && !empty($column['raw']) && preg_match('/decimal\\(\\d+,(\\d+)\\)/i', $column['raw'], $matches)){
+                $scale = $matches[1];
+            }
+            if($scale === null && !empty($column['default']) && preg_match('/\\.(\\d+)/', $column['default'], $matches)){
+                $scale = strlen($matches[1]);
+            }
+            $type = 'Decimal';
+            if (!empty($scale) && $scale != 2) {
+                $type .= $scale;
+            }
+            if (!$column['not_null']) $type .= 'Nullable';
+            return $type;
+            break;
             case 'float':
-                $type = 'Flt';
-                if($column['unsigned']) $type .= 'Unsigned';
-                if(!$column['not_null']) $type .= 'Nullable';
-                return 'Flt';
+                // Float types are always unsigned in our definitions; ignore unsigned when mapping back to class
+                return $column['not_null'] ? 'Flt' : 'FltNullable';
                 break;
+            default:
+                // Return the raw type string so it can still be surfaced for debugging
+                return ucfirst($type);
         }
     }
 
@@ -571,6 +751,7 @@ class Table
         
         $handle = fopen(__BASE_DIR__ . 'src/seeds/' . $SeedFile, 'r');
         $count = 0; $keys = [];
+        $localInserted = 0; $localUpdated = 0;
         if ($handle !== false) {
             while (($data = fgetcsv($handle, 1000, ',', "\"", "\\")) !== false) {
 
@@ -591,12 +772,14 @@ class Table
                 $obj = new $class(...$params);        
                 if(empty($resultHashTable[$params[$obj->getPrimaryKey()]])){
                     $querier->insert($obj)->run();
-                    Helpers::console("%s", "Adding new seed in $class\n", "Purple");
+                    $localInserted++;
+                    if($printSeed) Helpers::console("%s", "Adding new seed in $class\n", "Purple");
                 }
 
                 if(!empty($resultHashTable[$params[$obj->getPrimaryKey()]]) && $resultHashTable[$params[$obj->getPrimaryKey()]] !== hash('sha256', implode('||||', $params))) {
                     $querier->update($obj)->run();
-                    Helpers::console("%s", "Updating seed in $class\n", "Purple");
+                    $localUpdated++;
+                    if($printSeed) Helpers::console("%s", "Updating seed in $class\n", "Purple");
                 }
 
                 //Helpers::console
@@ -605,6 +788,9 @@ class Table
         } else {
             Helpers::console("%s", $class . "\n", "RedBackground");
         }
+        $this->migrationSummary['seeds_inserted'] += $localInserted;
+        $this->migrationSummary['seeds_updated'] += $localUpdated;
+        if($printSeed) Helpers::console("%s", "Seed file summary for $class -> inserted: $localInserted, updated: $localUpdated\n", "PurpleMuted");
     }
 
     /**
@@ -631,6 +817,7 @@ class Table
             $resultHashTable[$result->{$result->getPrimaryKey()}] = hash('sha256', implode('||||', $result->toArray()));
         }
         
+        $localInserted = 0; $localUpdated = 0;
         forEach($constants as $key => $value){
 
             
@@ -643,6 +830,7 @@ class Table
                     $columns[1]->propertyName => $key
                 ]);
                 Helpers::console("%s", "Adding new seed: " . $key . ": " .$value . "\n", "Purple");
+                $localInserted++;
                 $querier->insert($obj)->run();
             }
 
@@ -654,11 +842,15 @@ class Table
                 ]);
                 
                 Helpers::console("%s", "Updating seed: " . $key . ": " .$value . "\n", "Purple");
+                $localUpdated++;
                 $querier->update($obj)->run();
             }
 
             
         }
+        $this->migrationSummary['seeds_inserted'] += $localInserted;
+        $this->migrationSummary['seeds_updated'] += $localUpdated;
+        if($printSeed) Helpers::console("%s", "Seed constants summary for $class -> inserted: $localInserted, updated: $localUpdated\n", "PurpleMuted");
     }
 
     /**

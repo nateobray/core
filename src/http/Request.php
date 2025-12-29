@@ -7,26 +7,41 @@ use Psr\Http\Message\UriInterface;
 
 class Request extends Message implements RequestInterface
 {
-    private string $target = '/';
+    private string $target = '';
     private string $method = Method::GET;
     private URI $uri;
 
-    public function __construct($method= Method::GET, $uri='/', $headers=[], ?StreamInterface $body=null, $version='1.1')
+    public function __construct($method = Method::GET, $uri = '/', $headers = [], ?StreamInterface $body = null, $version = '1.1')
     {
-        $this->uri = new URI($uri);
-        $this->method = $method;
+        $this->uri = $uri instanceof URI ? $uri : new URI((string)$uri);
+        $this->method = (string)$method;
         parent::__construct($headers, $body, $version);
     }
 
     public function getRequestTarget()
     {
-        return $this->target;
+        if ($this->target !== '') {
+            return $this->target;
+        }
+        $target = $this->uri->getPath();
+        if ($target === '') {
+            $target = '/';
+        }
+        $query = $this->uri->getQuery();
+        if ($query !== '') {
+            $target .= '?' . $query;
+        }
+        return $target;
     }
 
     public function withRequestTarget($requestTarget)
     {
-        $this->target = $requestTarget;
-        return $this;
+        if (preg_match('/\s/', $requestTarget)) {
+            throw new \InvalidArgumentException('Request target cannot contain whitespace.');
+        }
+        $nr = clone $this;
+        $nr->target = $requestTarget;
+        return $nr;
     }
 
     public function getMethod()
@@ -36,8 +51,9 @@ class Request extends Message implements RequestInterface
 
     public function withMethod($method)
     {
-        $this->method = $method;
-        return $this;
+        $nr = clone $this;
+        $nr->method = (string)$method;
+        return $nr;
     }
 
     public function getUri()
@@ -52,7 +68,21 @@ class Request extends Message implements RequestInterface
 
     public function withUri(UriInterface $uri, $preserveHost = false)
     {
-        $this->uri = $uri;
-        return $this;
+        $nr = clone $this;
+        $nr->uri = $uri;
+
+        if (!$preserveHost || !$this->hasHeader('Host')) {
+            $host = $uri->getHost();
+            if ($host === '') {
+                $nr = $nr->withoutHeader('Host');
+            } else {
+                if ($uri->getPort() !== null) {
+                    $host .= ':' . $uri->getPort();
+                }
+                $nr = $nr->withHeader('Host', $host);
+            }
+        }
+
+        return $nr;
     }
 }
