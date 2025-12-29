@@ -192,7 +192,8 @@ class DBStatement
 
     protected function addParam($key, $value)
     {
-        $key = trim($key, ';\t\n\r\x0B');
+        // Strip accidental trailing semicolons/whitespace without corrupting placeholder names.
+        $key = trim($key, " \t\n\r\0\x0B;");
         if (isset($this->queryParams[$key])) {
             throw new \Exception("A param for key '{$key}' already exists.");
         }
