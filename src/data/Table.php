@@ -634,8 +634,17 @@ class Table
             if($scale === null && !empty($column['default']) && preg_match('/\\.(\\d+)/', $column['default'], $matches)){
                 $scale = strlen($matches[1]);
             }
+            $precision = $column['length'];
+            if($precision === null && !empty($column['raw']) && preg_match('/decimal\\((\\d+),\\d+\\)/i', $column['raw'], $matches)){
+                $precision = $matches[1];
+            }
+
+            // Keep legacy decimal mappings (Decimal, Decimal5, Decimal6, etc.) for the common DECIMAL(10, <scale>) case.
+            // Add explicit support for DECIMAL(18,5) without changing other precision behaviours.
             $type = 'Decimal';
-            if (!empty($scale) && $scale != 2) {
+            if((int)$precision === 18 && (int)$scale === 5){
+                $type = 'Decimal18_5';
+            } else if (!empty($scale) && $scale != 2) {
                 $type .= $scale;
             }
             if (!$column['not_null']) $type .= 'Nullable';
