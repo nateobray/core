@@ -749,13 +749,30 @@ class Table
 
         $reflectionClass = new ReflectionClass($class);
         $SeedFile = $reflectionClass->getConstant('SEED_FILE');
+        $seedMatchColumns = [];
+        if ($reflectionClass->hasConstant('SEED_MATCH_COLUMNS')) {
+            $candidateColumns = $reflectionClass->getConstant('SEED_MATCH_COLUMNS');
+            if (is_array($candidateColumns)) {
+                $seedMatchColumns = array_values(array_filter($candidateColumns, static function ($column): bool {
+                    return is_string($column) && trim($column) !== '';
+                }));
+            }
+        }
 
         if($printSeed) Helpers::console("%s",'Seed File: ' . $SeedFile . "\n", "Purple");
 
         $results = $querier->select($class)->run();
         $resultHashTable = [];
+        $resultMatchTable = [];
         forEach($results as $result){
-            $resultHashTable[$result->{$result->getPrimaryKey()}] = hash('sha256', implode('||||', $result->toArray()));
+            $row = $result->toArray();
+            $primaryKeyValue = $result->{$result->getPrimaryKey()};
+            $resultHashTable[$primaryKeyValue] = hash('sha256', implode('||||', $row));
+
+            $matchKey = $this->buildSeedMatchKey($row, $seedMatchColumns);
+            if ($matchKey !== null) {
+                $resultMatchTable[$matchKey] = $primaryKeyValue;
+            }
         }
         
         $handle = fopen(__BASE_DIR__ . 'src/seeds/' . $SeedFile, 'r');
@@ -778,15 +795,46 @@ class Table
                     $params[$keys[$index]] = $d;
                 }
 
-                $obj = new $class(...$params);        
-                if(empty($resultHashTable[$params[$obj->getPrimaryKey()]])){
-                    $querier->insert($obj)->run();
+                $obj = new $class(...$params);
+                $primaryKey = $obj->getPrimaryKey();
+                $seedPrimaryKeyValue = $params[$primaryKey] ?? null;
+                $matchKey = $this->buildSeedMatchKey($params, $seedMatchColumns);
+
+                if ($matchKey !== null && array_key_exists($matchKey, $resultMatchTable)) {
+                    $params[$primaryKey] = $resultMatchTable[$matchKey];
+                } elseif ($matchKey !== null && $seedPrimaryKeyValue !== null && array_key_exists($seedPrimaryKeyValue, $resultHashTable)) {
+                    // Preserve tenant-specific rows when seed ids collide on mutable tables like SystemSettings.
+                    unset($params[$primaryKey]);
+                }
+
+                $obj = new $class(...$params);
+                $targetPrimaryKeyValue = $params[$primaryKey] ?? null;
+                $targetHash = hash('sha256', implode('||||', $obj->toArray()));
+
+                if($targetPrimaryKeyValue === null || !array_key_exists($targetPrimaryKeyValue, $resultHashTable)){
+                    $insertedId = $querier->insert($obj)->run();
+                    if ($insertedId !== null) {
+                        $obj->{$primaryKey} = $insertedId;
+                    }
+                    $storedRow = $obj->toArray();
+                    $storedPrimaryKeyValue = $obj->{$primaryKey} ?? $insertedId;
+                    if ($storedPrimaryKeyValue !== null) {
+                        $resultHashTable[$storedPrimaryKeyValue] = hash('sha256', implode('||||', $storedRow));
+                        $storedMatchKey = $this->buildSeedMatchKey($storedRow, $seedMatchColumns);
+                        if ($storedMatchKey !== null) {
+                            $resultMatchTable[$storedMatchKey] = $storedPrimaryKeyValue;
+                        }
+                    }
                     $localInserted++;
                     if($printSeed) Helpers::console("%s", "Adding new seed in $class\n", "Purple");
                 }
 
-                if(!empty($resultHashTable[$params[$obj->getPrimaryKey()]]) && $resultHashTable[$params[$obj->getPrimaryKey()]] !== hash('sha256', implode('||||', $params))) {
+                if($targetPrimaryKeyValue !== null && array_key_exists($targetPrimaryKeyValue, $resultHashTable) && $resultHashTable[$targetPrimaryKeyValue] !== $targetHash) {
                     $querier->update($obj)->run();
+                    $resultHashTable[$targetPrimaryKeyValue] = $targetHash;
+                    if ($matchKey !== null) {
+                        $resultMatchTable[$matchKey] = $targetPrimaryKeyValue;
+                    }
                     $localUpdated++;
                     if($printSeed) Helpers::console("%s", "Updating seed in $class\n", "Purple");
                 }
@@ -800,6 +848,24 @@ class Table
         $this->migrationSummary['seeds_inserted'] += $localInserted;
         $this->migrationSummary['seeds_updated'] += $localUpdated;
         if($printSeed) Helpers::console("%s", "Seed file summary for $class -> inserted: $localInserted, updated: $localUpdated\n", "PurpleMuted");
+    }
+
+    private function buildSeedMatchKey(array $row, array $seedMatchColumns): ?string
+    {
+        if (empty($seedMatchColumns)) {
+            return null;
+        }
+
+        $parts = [];
+        foreach ($seedMatchColumns as $column) {
+            if (!array_key_exists($column, $row)) {
+                return null;
+            }
+            $parts[$column] = $row[$column];
+        }
+
+        $encoded = json_encode($parts);
+        return $encoded === false ? null : $encoded;
     }
 
     /**
