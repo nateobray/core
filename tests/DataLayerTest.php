@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 namespace {
     define('OBRAY_FORCE_HTTP_REQUEST', true);
+    if (!defined('__BASE_DIR__')) {
+        define('__BASE_DIR__', dirname(__DIR__) . '/');
+    }
     require __DIR__ . '/bootstrap.php';
 
     function assert_true($condition, string $message): void
@@ -10,6 +13,14 @@ namespace {
         if (!$condition) {
             throw new \RuntimeException($message);
         }
+    }
+
+    function invoke_private_method(object $object, string $method, array $args = [])
+    {
+        $reflection = new \ReflectionClass($object);
+        $reflectionMethod = $reflection->getMethod($method);
+        $reflectionMethod->setAccessible(true);
+        return $reflectionMethod->invokeArgs($object, $args);
     }
 }
 
@@ -20,6 +31,10 @@ use obray\data\Querier;
 use obray\data\Table;
 use tests\fixtures\Category;
 use tests\fixtures\Product;
+use tests\fixtures\SeedConstantInsertOnlyStatus;
+use tests\fixtures\SeedConstantMutableStatus;
+use tests\fixtures\SeedFileInsertOnlySetting;
+use tests\fixtures\SeedFileMutableSetting;
 
 class FakeDBConn extends DBConn
 {
@@ -372,6 +387,62 @@ $updateStmt = $querier->select(Product::class)->where(['products.product_id' => 
 $updateStmt->runUpdateOnExists(['product_name' => 'Hammer Pro']);
 $updated = $querier->select(Product::class)->where(['products.product_name' => 'Hammer Pro'])->limit(1)->run();
 assert_true($updated->product_name === 'Hammer Pro', 'runUpdateOnExists did not apply update.');
+
+$seedFileConn = new FakeDBConn();
+$seedFileConn->seed(SeedFileMutableSetting::class, [
+    ['setting_id' => 99, 'setting_key' => 'task_filter', 'setting_value' => 'tenant_override'],
+]);
+$seedFileTable = new Table($seedFileConn);
+invoke_private_method($seedFileTable, 'seedFile', [SeedFileMutableSetting::class, false]);
+$seedFileQuerier = new Querier($seedFileConn);
+$updatedSeedFileSetting = $seedFileQuerier->select(SeedFileMutableSetting::class)->where(['setting_key' => 'task_filter'])->limit(1)->run();
+$insertedSeedFileSetting = $seedFileQuerier->select(SeedFileMutableSetting::class)->where(['setting_key' => 'new_setting'])->limit(1)->run();
+assert_true($updatedSeedFileSetting->setting_id === 99, 'CSV seeding should reuse the existing primary key for matched rows.');
+assert_true($updatedSeedFileSetting->setting_value === 'seed_default', 'Default CSV seeding should update matched rows.');
+assert_true($insertedSeedFileSetting instanceof SeedFileMutableSetting, 'CSV seeding should insert missing rows.');
+assert_true($insertedSeedFileSetting->setting_value === 'enabled', 'Inserted CSV seed value mismatch.');
+
+$seedFileInsertOnlyConn = new FakeDBConn();
+$seedFileInsertOnlyConn->seed(SeedFileInsertOnlySetting::class, [
+    ['setting_id' => 105, 'setting_key' => 'task_filter', 'setting_value' => 'tenant_override'],
+]);
+$seedFileInsertOnlyTable = new Table($seedFileInsertOnlyConn);
+invoke_private_method($seedFileInsertOnlyTable, 'seedFile', [SeedFileInsertOnlySetting::class, false]);
+$seedFileInsertOnlyQuerier = new Querier($seedFileInsertOnlyConn);
+$preservedSeedFileSetting = $seedFileInsertOnlyQuerier->select(SeedFileInsertOnlySetting::class)->where(['setting_key' => 'task_filter'])->limit(1)->run();
+$insertedInsertOnlySeedFileSetting = $seedFileInsertOnlyQuerier->select(SeedFileInsertOnlySetting::class)->where(['setting_key' => 'new_setting'])->limit(1)->run();
+assert_true($preservedSeedFileSetting->setting_id === 105, 'Insert-only CSV seeding should preserve the existing primary key.');
+assert_true($preservedSeedFileSetting->setting_value === 'tenant_override', 'Insert-only CSV seeding should preserve existing matched rows.');
+assert_true($insertedInsertOnlySeedFileSetting instanceof SeedFileInsertOnlySetting, 'Insert-only CSV seeding should still insert missing rows.');
+assert_true($insertedInsertOnlySeedFileSetting->setting_value === 'enabled', 'Insert-only CSV seed insert value mismatch.');
+assert_true($seedFileInsertOnlyQuerier->select(SeedFileInsertOnlySetting::class)->count() === 2, 'Insert-only CSV seeding should keep the existing row and add the missing seed.');
+
+$seedConstantConn = new FakeDBConn();
+$seedConstantConn->seed(SeedConstantMutableStatus::class, [
+    ['status_id' => 1, 'status_name' => 'Tenant Override Active'],
+]);
+$seedConstantTable = new Table($seedConstantConn);
+invoke_private_method($seedConstantTable, 'seedConstants', [SeedConstantMutableStatus::class, Table::getColumns(SeedConstantMutableStatus::class), false]);
+$seedConstantQuerier = new Querier($seedConstantConn);
+$updatedSeedConstant = $seedConstantQuerier->select(SeedConstantMutableStatus::class)->where(['status_id' => 1])->limit(1)->run();
+$insertedSeedConstant = $seedConstantQuerier->select(SeedConstantMutableStatus::class)->where(['status_id' => 2])->limit(1)->run();
+assert_true($updatedSeedConstant->status_name === 'Active', 'Default constant seeding should update matched rows.');
+assert_true($insertedSeedConstant instanceof SeedConstantMutableStatus, 'Constant seeding should insert missing seed constants.');
+assert_true($insertedSeedConstant->status_name === 'Inactive', 'Inserted constant seed value mismatch.');
+
+$seedConstantInsertOnlyConn = new FakeDBConn();
+$seedConstantInsertOnlyConn->seed(SeedConstantInsertOnlyStatus::class, [
+    ['status_id' => 1, 'status_name' => 'Tenant Override Active'],
+]);
+$seedConstantInsertOnlyTable = new Table($seedConstantInsertOnlyConn);
+invoke_private_method($seedConstantInsertOnlyTable, 'seedConstants', [SeedConstantInsertOnlyStatus::class, Table::getColumns(SeedConstantInsertOnlyStatus::class), false]);
+$seedConstantInsertOnlyQuerier = new Querier($seedConstantInsertOnlyConn);
+$preservedSeedConstant = $seedConstantInsertOnlyQuerier->select(SeedConstantInsertOnlyStatus::class)->where(['status_id' => 1])->limit(1)->run();
+$insertedInsertOnlySeedConstant = $seedConstantInsertOnlyQuerier->select(SeedConstantInsertOnlyStatus::class)->where(['status_id' => 2])->limit(1)->run();
+assert_true($preservedSeedConstant->status_name === 'Tenant Override Active', 'Insert-only constant seeding should preserve existing matched rows.');
+assert_true($insertedInsertOnlySeedConstant instanceof SeedConstantInsertOnlyStatus, 'Insert-only constant seeding should still insert missing seed constants.');
+assert_true($insertedInsertOnlySeedConstant->status_name === 'Inactive', 'Insert-only constant seed insert value mismatch.');
+assert_true($seedConstantInsertOnlyQuerier->select(SeedConstantInsertOnlyStatus::class)->count() === 2, 'Insert-only constant seeding should not treat metadata constants as seed rows.');
 
 echo "Data layer regression tests passed\n";
 

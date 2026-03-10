@@ -1,0 +1,3 @@
+setting_id,setting_key,setting_value
+1,task_filter,seed_default
+2,new_setting,enabled

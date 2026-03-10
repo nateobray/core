@@ -748,6 +748,7 @@ class Table
         $querier = new Querier($this->DBConn);
 
         $reflectionClass = new ReflectionClass($class);
+        $seedInsertOnly = $this->shouldInsertSeedsOnly($reflectionClass);
         $SeedFile = $reflectionClass->getConstant('SEED_FILE');
         $seedMatchColumns = [];
         if ($reflectionClass->hasConstant('SEED_MATCH_COLUMNS')) {
@@ -829,7 +830,13 @@ class Table
                     if($printSeed) Helpers::console("%s", "Adding new seed in $class\n", "Purple");
                 }
 
-                if($targetPrimaryKeyValue !== null && array_key_exists($targetPrimaryKeyValue, $resultHashTable) && $resultHashTable[$targetPrimaryKeyValue] !== $targetHash) {
+                if(
+                    !$seedInsertOnly &&
+                    $targetPrimaryKeyValue !== null &&
+                    array_key_exists($targetPrimaryKeyValue, $resultHashTable) &&
+                    $resultHashTable[$targetPrimaryKeyValue] !== $targetHash
+                ) {
+                    $obj->markDirty();
                     $querier->update($obj)->run();
                     $resultHashTable[$targetPrimaryKeyValue] = $targetHash;
                     if ($matchKey !== null) {
@@ -868,6 +875,36 @@ class Table
         return $encoded === false ? null : $encoded;
     }
 
+    private function shouldInsertSeedsOnly(ReflectionClass $reflectionClass): bool
+    {
+        if (!$reflectionClass->hasConstant('SEED_INSERT_ONLY')) {
+            return false;
+        }
+
+        $seedInsertOnly = filter_var(
+            $reflectionClass->getConstant('SEED_INSERT_ONLY'),
+            FILTER_VALIDATE_BOOLEAN,
+            FILTER_NULL_ON_FAILURE
+        );
+
+        return $seedInsertOnly ?? false;
+    }
+
+    private function isSeedMetadataConstant(string $key): bool
+    {
+        return in_array($key, [
+            'SEED_CONSTANTS',
+            'TABLE',
+            'FOREIGN_KEYS',
+            'INDEXES',
+            'FEATURE_SET',
+            'SEED_FILE',
+            'KEEP_SEEDS_CURRENT',
+            'SEED_MATCH_COLUMNS',
+            'SEED_INSERT_ONLY'
+        ], true);
+    }
+
     /**
      * seedConstants
      * This seeds a table from the constants that are properties of that given class
@@ -883,6 +920,7 @@ class Table
         
         if($printSeed) Helpers::console("%s", 'Seeding Constants from : ' . $class . "\n", "Purple");
         $reflection = new \ReflectionClass($class);
+        $seedInsertOnly = $this->shouldInsertSeedsOnly($reflection);
         $constants = $reflection->getConstants();
         $querier = new Querier($this->DBConn);
 
@@ -896,10 +934,14 @@ class Table
         forEach($constants as $key => $value){
 
             
-            if(in_array($key, ['SEED_CONSTANTS', 'TABLE', 'FOREIGN_KEYS', 'INDEXES', 'FEATURE_SET', 'SEED_FILE', 'KEEP_SEEDS_CURRENT'])) continue;
+            if($this->isSeedMetadataConstant($key)) continue;
             $key = ucwords(strtolower(str_replace('_', ' ', $key)));
+            $seedHash = hash('sha256', implode('||||', [
+                $columns[0]->propertyName => $value,
+                $columns[1]->propertyName => $key
+            ]));
 
-            if(empty($resultHashTable[$value])){
+            if(!array_key_exists($value, $resultHashTable)){
                 $obj = new $class(...[
                     $columns[0]->propertyName => $value,
                     $columns[1]->propertyName => $key
@@ -909,12 +951,17 @@ class Table
                 $querier->insert($obj)->run();
             }
 
-            if(!empty($resultHashTable[$value]) && $resultHashTable[$value] !== hash('sha256', implode('||||', [$columns[0]->propertyName => $value, $columns[1]->propertyName => $key]))) {
+            if(
+                !$seedInsertOnly &&
+                array_key_exists($value, $resultHashTable) &&
+                $resultHashTable[$value] !== $seedHash
+            ) {
                 
                 $obj = new $class(...[
                     $columns[0]->propertyName => $value,
                     $columns[1]->propertyName => $key
                 ]);
+                $obj->markDirty();
                 
                 Helpers::console("%s", "Updating seed: " . $key . ": " .$value . "\n", "Purple");
                 $localUpdated++;
