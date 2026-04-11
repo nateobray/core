@@ -122,6 +122,21 @@ class Statement
         return $this->run('', [], true);
     }
 
+    public function first(): mixed
+    {
+        $statement = clone $this;
+        return $statement->limit(1)->run();
+    }
+
+    public function firstOrNull(): mixed
+    {
+        $result = $this->first();
+        if ($result === [] || $result === null) {
+            return null;
+        }
+        return $result;
+    }
+
     /**
      * leftJoin
      * 
@@ -189,7 +204,7 @@ class Statement
 
     public function limit(int $rows, int $offset=0): Statement
     {
-        if($rows === 1) $this->returnSingleRow = true;
+        $this->returnSingleRow = ($rows === 1);
         $this->limit = new Limit($rows, $offset);
         return $this;
     }

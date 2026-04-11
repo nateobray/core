@@ -147,4 +147,11 @@ class Querier
     {
         return $this->DBConn->inTransaction();
     }
+
+    public function transaction(callable $callback)
+    {
+        return $this->DBConn->transaction(function () use ($callback) {
+            return $callback($this);
+        });
+    }
 }

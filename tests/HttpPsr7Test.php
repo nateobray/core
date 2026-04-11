@@ -20,6 +20,22 @@ use obray\core\http\Response;
 use obray\core\http\ServerRequest;
 use obray\core\http\StatusCode;
 
+class TestServerRequest extends ServerRequest
+{
+    private string $testRawBody;
+
+    public function __construct(string $path, array $params, string $rawBody)
+    {
+        $this->testRawBody = $rawBody;
+        parent::__construct($path, $params);
+    }
+
+    protected function readRawBody(): string
+    {
+        return $this->testRawBody;
+    }
+}
+
 // Body stream behaviour
 $body = new Body('foo');
 assert_true((string)$body === 'foo', 'Body::__toString should return contents.');
@@ -55,6 +71,20 @@ $requestWithAttribute = $request->withAttribute('user', 42);
 assert_true($request->getAttribute('user', null) === null, 'withAttribute should be immutable.');
 assert_true($requestWithAttribute->getAttribute('user') === 42, 'Attribute value mismatch.');
 assert_true($request->withCookieParams(['a' => 'b'])->getCookieParams()['a'] === 'b', 'withCookieParams failed.');
+
+$_SERVER = [
+    'REQUEST_METHOD' => 'POST',
+    'HTTP_HOST' => 'example.com',
+    'REQUEST_URI' => '/submit?via=query',
+    'CONTENT_TYPE' => 'application/json',
+];
+$_GET = ['via' => 'query'];
+$_POST = [];
+$_COOKIE = [];
+$jsonRequest = new TestServerRequest('/submit?via=query', [], '{"name":"Widget","active":true}');
+assert_true($jsonRequest->getParsedBody()['name'] === 'Widget', 'JSON parsed body mismatch.');
+assert_true($jsonRequest->getQueryParams()['name'] === 'Widget', 'JSON body should merge into params.');
+assert_true((string)$jsonRequest->getBody() === '{"name":"Widget","active":true}', 'Raw request body mismatch.');
 
 $exceptionThrown = false;
 try {

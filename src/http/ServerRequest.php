@@ -13,10 +13,12 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
     private array $uploadedFiles = [];
     private $parsedBody = null;
     private array $attributes = [];
+    private string $rawBody = '';
 
     public function __construct($path = '', $params = [])
     {
         $method = Method::GET;
+        $uri = $path;
         $forceHttp = defined('OBRAY_FORCE_HTTP_REQUEST') && OBRAY_FORCE_HTTP_REQUEST;
         if((PHP_SAPI === 'cli' || !empty($_SERVER['argv'])) && !$forceHttp){
             if(empty($_SERVER['argv'][1])) throw new \Exception("Console dedected, but no path specified.");
@@ -46,35 +48,77 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
                 $uri = $path;
             }
             
-            $method = $_SERVER['REQUEST_METHOD'];
+            $method = $_SERVER['REQUEST_METHOD'] ?? Method::GET;
             if(empty($params)){
-                $this->params = array_merge($_GET, $_POST);
+                $this->params = array_merge($_GET ?? [], $_POST ?? []);
             } else {
                 $this->params = $params;
             }
-            switch(strtolower($method))
-            {
-                case 'put': $this->parseRequest($method, $_SERVER["CONTENT_TYPE"]); break;
-                case 'delete': $this->parseRequest($method, $_SERVER["CONTENT_TYPE"]); break;
+
+            $this->rawBody = $this->readRawBody();
+            $parsedBody = $this->parseRequestBody($method, $this->getIncomingContentType(), $this->rawBody);
+            if ($parsedBody !== null) {
+                $this->parsedBody = $parsedBody;
+                if (empty($params) && is_array($parsedBody)) {
+                    $this->params = array_merge($this->params, $parsedBody);
+                }
             }
-            $this->cookies = $_COOKIE;
+
+            $this->cookies = $_COOKIE ?? [];
         }
         $headers = $this->getServerHeaders();
-        $this->server = $_SERVER;
-        parent::__construct($method, $uri, $headers);
+        $this->server = $_SERVER ?? [];
+        parent::__construct($method, $uri, $headers, $this->rawBody !== '' ? new Body($this->rawBody) : null);
     }
 
-    private function parseRequest($method, $contentType)
+    protected function readRawBody(): string
     {
-        if(strpos($contentType, 'multipart/form-data')){
-            $params = [];
-            parse_str(file_get_contents('php://input'), $params);
-            $this->params = array_merge($this->params, $params);
+        $rawBody = file_get_contents('php://input');
+        if ($rawBody === false) {
+            return '';
+        }
+        return $rawBody;
+    }
+
+    private function getIncomingContentType(): string
+    {
+        $contentType = $_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '';
+        return strtolower(trim((string)$contentType));
+    }
+
+    private function parseRequestBody(string $method, string $contentType, string $rawBody)
+    {
+        $method = strtoupper($method);
+        if (in_array($method, [Method::GET, Method::HEAD, Method::OPTIONS, Method::TRACE, Method::CONSOLE], true)) {
+            return null;
         }
 
-        if(strpos($contentType, 'application/x-www-form-urlencoded')){
-
+        if ($contentType !== '' && strpos($contentType, 'application/json') !== false) {
+            if (trim($rawBody) === '') {
+                return null;
+            }
+            $decoded = json_decode($rawBody, true);
+            return is_array($decoded) ? $decoded : null;
         }
+
+        if ($contentType !== '' && strpos($contentType, 'application/x-www-form-urlencoded') !== false) {
+            if ($rawBody === '') {
+                return !empty($_POST) ? $_POST : null;
+            }
+            $parsed = [];
+            parse_str($rawBody, $parsed);
+            return $parsed;
+        }
+
+        if ($contentType !== '' && strpos($contentType, 'multipart/form-data') !== false) {
+            return !empty($_POST) ? $_POST : null;
+        }
+
+        if (!empty($_POST)) {
+            return $_POST;
+        }
+
+        return null;
     }
 
     private function getServerHeaders()

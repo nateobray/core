@@ -233,7 +233,7 @@ Class Router
         } else {
             $remaining[] = $object;
             if( empty($path_array) ){
-                //throw new HTTPException("Path not found (".$this->startingPath.").", 404);
+                throw new HTTPException("Path not found (".$this->startingPath.").", StatusCode::NOT_FOUND);
             }
         }
         // recursively search path for controller

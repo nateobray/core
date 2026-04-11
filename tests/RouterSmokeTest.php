@@ -30,6 +30,7 @@ namespace {
 use obray\core\Factory;
 use obray\core\Invoker;
 use obray\core\Router;
+use obray\core\encoders\ErrorEncoder;
 use obray\core\encoders\JSONEncoder;
 
 $_SERVER = array_replace([
@@ -47,6 +48,7 @@ $factory = new Factory(null);
 $invoker = new Invoker();
 $router = new Router($factory, $invoker, null, false, microtime(true));
 $router->addEncoder(JSONEncoder::class, 'data', 'application/json');
+$router->addEncoder(ErrorEncoder::class, 'error', 'application/json');
 
 $response = $router->route('/dummy', [], true);
 $last = $router->getLastResponse();
@@ -66,6 +68,16 @@ if (($payload['data']['message'] ?? null) !== 'ok') {
 
 if (($last['code'] ?? null) !== 200) {
     throw new \RuntimeException('Unexpected status code: ' . var_export($last['code'] ?? null, true));
+}
+
+$missingRouter = new Router($factory, $invoker, null, false, microtime(true));
+$missingRouter->addEncoder(JSONEncoder::class, 'data', 'application/json');
+$missingRouter->addEncoder(ErrorEncoder::class, 'error', 'application/json');
+$missingRouter->route('/missing', [], true);
+$missing = $missingRouter->getLastResponse();
+
+if (($missing['code'] ?? null) !== 404) {
+    throw new \RuntimeException('Missing route should return 404.');
 }
 
 echo "Router JSON smoke test passed\n";

@@ -203,10 +203,20 @@ Class DBConn
         $conn->beginTransaction();
     }
 
+    public function commit()
+    {
+        $this->commitTransaction();
+    }
+
     public function commitTransaction()
     {
         $conn = $this->getConnection();
         $conn->commit();
+    }
+
+    public function rollback()
+    {
+        $this->rollbackTransaction();
     }
 
     public function rollbackTransaction()
@@ -219,6 +229,29 @@ Class DBConn
     {
         $conn = $this->getConnection();
         return $conn->inTransaction();
+    }
+
+    public function transaction(callable $callback)
+    {
+        $startedTransaction = false;
+
+        if (!$this->inTransaction()) {
+            $this->beginTransaction();
+            $startedTransaction = true;
+        }
+
+        try {
+            $result = $callback($this);
+            if ($startedTransaction && $this->inTransaction()) {
+                $this->commit();
+            }
+            return $result;
+        } catch (\Throwable $e) {
+            if ($startedTransaction && $this->inTransaction()) {
+                $this->rollback();
+            }
+            throw $e;
+        }
     }
 
     public function disconnect() {

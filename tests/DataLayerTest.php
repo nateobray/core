@@ -363,6 +363,13 @@ $first = $querier->select(Product::class)->orderBy('products.product_id')->limit
 assert_true($first instanceof Product, 'Limit(1) should return single Product instance.');
 assert_true($first->product_name === 'Hammer', 'Limit(1) returned unexpected product.');
 
+$firstViaHelper = $querier->select(Product::class)->orderBy('products.product_id')->first();
+assert_true($firstViaHelper instanceof Product, 'first() should return single Product instance.');
+assert_true($firstViaHelper->product_name === 'Hammer', 'first() returned unexpected product.');
+
+$missingViaHelper = $querier->select(Product::class)->where(['product_id' => 999])->firstOrNull();
+assert_true($missingViaHelper === null, 'firstOrNull() should return null when no row exists.');
+
 $newProduct = new Product(...[
     'product_name' => 'Compiler',
     'category_id' => 2
@@ -387,6 +394,25 @@ $updateStmt = $querier->select(Product::class)->where(['products.product_id' => 
 $updateStmt->runUpdateOnExists(['product_name' => 'Hammer Pro']);
 $updated = $querier->select(Product::class)->where(['products.product_name' => 'Hammer Pro'])->limit(1)->run();
 assert_true($updated->product_name === 'Hammer Pro', 'runUpdateOnExists did not apply update.');
+
+$transactionCount = $querier->transaction(function (Querier $tx) {
+    assert_true($tx->inTransaction(), 'transaction() should begin a transaction before invoking the callback.');
+    return $tx->select(Product::class)->count();
+});
+assert_true($transactionCount === 4, 'transaction() should return the callback result.');
+assert_true(!$querier->inTransaction(), 'transaction() should close the transaction after success.');
+
+$rollbackTriggered = false;
+try {
+    $querier->transaction(function (Querier $tx) use (&$rollbackTriggered) {
+        $rollbackTriggered = $tx->inTransaction();
+        throw new \RuntimeException('boom');
+    });
+} catch (\RuntimeException $e) {
+    assert_true($e->getMessage() === 'boom', 'transaction() should rethrow the original exception.');
+}
+assert_true($rollbackTriggered, 'transaction() should execute the callback inside a transaction.');
+assert_true(!$querier->inTransaction(), 'transaction() should roll back after an exception.');
 
 $seedFileConn = new FakeDBConn();
 $seedFileConn->seed(SeedFileMutableSetting::class, [
