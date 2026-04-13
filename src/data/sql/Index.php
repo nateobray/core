@@ -12,6 +12,10 @@ class Index
         $columnSQL = '`' . implode('`,`', $columns) . '`';
         $prefix = !empty($type) ? 'uniq' : 'idx';
         $keyName = $prefix . '_' . implode('_', $columns);
+        if(strlen($keyName) > 64){
+            $hash = substr(md5($keyName), 0, 8);
+            $keyName = substr($keyName, 0, 55) . '_' . $hash;
+        }
         if(!empty($type)) $type = $type . ' ';
         $sql = $type . 'KEY `' . $keyName . '` (' . $columnSQL . ') USING BTREE';
         return $sql;
