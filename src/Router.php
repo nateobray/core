@@ -44,6 +44,8 @@ Class Router
     private ?ServerRequest $ServerRequest = null;
     private ?EncoderInterface $errorEncoder = null;
     private ?EncoderInterface $consoleEncoder = null;
+    private ?string $notFoundFallbackController = null;
+    private $notFoundFallbackCondition = null;
     private $lastResponse = null;
     protected $content_type;
     
@@ -233,6 +235,9 @@ Class Router
         } else {
             $remaining[] = $object;
             if( empty($path_array) ){
+                if ($this->shouldUseNotFoundFallback($remaining)) {
+                    return $this->makeFallbackController($params, $direct, $remaining);
+                }
                 throw new HTTPException("Path not found (".$this->startingPath.").", StatusCode::NOT_FOUND);
             }
         }
@@ -385,6 +390,12 @@ Class Router
         }
     }
 
+    public function setNotFoundFallbackController(string $controllerClass, ?callable $condition = null): void
+    {
+        $this->notFoundFallbackController = ltrim($controllerClass, '\\');
+        $this->notFoundFallbackCondition = $condition;
+    }
+
     /**
      * Set the permissions handler which is used to check permissions on objects and function
      * 
@@ -470,6 +481,30 @@ Class Router
     public function getLastResponse()
     {
         return $this->lastResponse;
+    }
+
+    private function shouldUseNotFoundFallback(array $remaining): bool
+    {
+        if ($this->notFoundFallbackController === null) {
+            return false;
+        }
+
+        if (!class_exists('\\' . $this->notFoundFallbackController)) {
+            return false;
+        }
+
+        if ($this->notFoundFallbackCondition === null) {
+            return true;
+        }
+
+        return (bool)call_user_func($this->notFoundFallbackCondition, $this->ServerRequest, $remaining);
+    }
+
+    private function makeFallbackController(array $params, bool $direct, array $remaining): mixed
+    {
+        $path_array = explode('\\', $this->notFoundFallbackController);
+        $params['remaining'] = $remaining;
+        return $this->make($path_array, $params, $direct, '');
     }
 
     private function resolveEncoder($encoder): EncoderInterface

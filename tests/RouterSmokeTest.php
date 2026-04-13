@@ -23,6 +23,16 @@ class Dummy
     }
 }
 
+class Index
+{
+    public $html = '<html>shell</html>';
+
+    public function get(): void
+    {
+        // no-op; html shell is already set
+    }
+}
+
 }
 
 namespace {
@@ -31,6 +41,7 @@ use obray\core\Factory;
 use obray\core\Invoker;
 use obray\core\Router;
 use obray\core\encoders\ErrorEncoder;
+use obray\core\encoders\HTMLEncoder;
 use obray\core\encoders\JSONEncoder;
 
 $_SERVER = array_replace([
@@ -78,6 +89,25 @@ $missing = $missingRouter->getLastResponse();
 
 if (($missing['code'] ?? null) !== 404) {
     throw new \RuntimeException('Missing route should return 404.');
+}
+
+$fallbackRouter = new Router($factory, $invoker, null, false, microtime(true));
+$fallbackRouter->addEncoder(JSONEncoder::class, 'data', 'application/json');
+$fallbackRouter->addEncoder(ErrorEncoder::class, 'error', 'application/json');
+$fallbackRouter->addEncoder(HTMLEncoder::class, 'html', 'text/html');
+$fallbackRouter->setNotFoundFallbackController(\controllers\Index::class, static function ($request): bool {
+    return $request->getMethod() === 'GET'
+        && strpos((string)$request->getUri()->getPath(), '/v1/') !== 0;
+});
+$fallbackRouter->route('/company/manufacturing/uptime/', [], true);
+$fallback = $fallbackRouter->getLastResponse();
+
+if (($fallback['code'] ?? null) !== 200) {
+    throw new \RuntimeException('Fallback route should return 200.');
+}
+
+if (($fallback['contentType'] ?? null) !== 'text/html') {
+    throw new \RuntimeException('Fallback route should use the HTML encoder.');
 }
 
 echo "Router JSON smoke test passed\n";
