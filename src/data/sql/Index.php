@@ -24,11 +24,32 @@ class Index
     /**
      * Normalize a raw INDEXES constant entry into a comparable structure.
      * Returns ['columns' => string[], 'type' => string]
+     *
+     * Supports three formats:
+     *   ['col']                        — single column, no type
+     *   ['col', 'UNIQUE']              — single column + type
+     *   [['col1','col2'], 'UNIQUE']    — explicit columns array + type
+     *   ['col1', 'col2', 'col3']       — flat multi-column composite, no type
      */
     static public function normalize(array $entry): array
     {
-        $columns = is_array($entry[0]) ? $entry[0] : [$entry[0]];
-        $type = isset($entry[1]) ? strtoupper(trim($entry[1])) : '';
+        $validTypes = ['UNIQUE', ''];
+        if(is_array($entry[0])){
+            // Explicit [columns_array, type] format
+            $columns = $entry[0];
+            $type = isset($entry[1]) ? strtoupper(trim($entry[1])) : '';
+        } else {
+            $potentialType = isset($entry[1]) ? strtoupper(trim($entry[1])) : '';
+            if(count($entry) === 2 && in_array($potentialType, $validTypes)){
+                // ['col', 'UNIQUE'] or ['col', ''] format
+                $columns = [$entry[0]];
+                $type = $potentialType;
+            } else {
+                // Flat array of column names: ['col1', 'col2', 'col3']
+                $columns = $entry;
+                $type = '';
+            }
+        }
         return ['columns' => $columns, 'type' => $type];
     }
 }
