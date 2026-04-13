@@ -22,6 +22,7 @@ class Table
         'columns_missing' => 0,
         'columns_mismatched' => 0,
         'foreign_keys_missing' => 0,
+        'indexes_missing' => 0,
         'seeds_inserted' => 0,
         'seeds_updated' => 0
     ];
@@ -151,6 +152,10 @@ class Table
         Helpers::console(
             "%s",
             sprintf("\tForeign keys missing: %d\n", $this->migrationSummary['foreign_keys_missing'])
+        );
+        Helpers::console(
+            "%s",
+            sprintf("\tIndexes missing: %d\n", $this->migrationSummary['indexes_missing'])
         );
         Helpers::console(
             "%s",
@@ -473,15 +478,50 @@ class Table
                 }
             }
 
-            //print_r($columns);
+            // Parse existing indexes from SHOW CREATE TABLE (excludes PRIMARY KEY and FOREIGN KEY constraints)
+            $indexPattern = '/^\s*(UNIQUE\s+)?KEY\s+`([^`]+)`\s+\(([^)]+)\)/im';
+            preg_match_all($indexPattern, $row["Create Table"], $indexMatches, PREG_SET_ORDER);
+
+            $existingIndexes = [];
+            foreach ($indexMatches as $match) {
+                $cols = array_map(fn($c) => trim($c, '` '), explode(',', $match[3]));
+                $existingIndexes[] = [
+                    'columns' => $cols,
+                    'type'    => !empty(trim($match[1])) ? 'UNIQUE' : '',
+                ];
+            }
+
+            // Find indexes defined in the model that are missing from the DB
+            if(defined($class . '::INDEXES')){
+                foreach($class::INDEXES as $entry){
+                    $normalized = \obray\data\sql\Index::normalize($entry);
+                    $found = false;
+                    foreach($existingIndexes as $existing){
+                        if($existing['type'] === $normalized['type'] && empty(array_diff($normalized['columns'], $existing['columns'])) && empty(array_diff($existing['columns'], $normalized['columns']))){
+                            $found = true;
+                            break;
+                        }
+                    }
+                    if(!$found){
+                        Helpers::console("%s", "\nTable ");
+                        Helpers::console("%s", $table, "YellowBold");
+                        Helpers::console("%s", " is missing index on ");
+                        Helpers::console("%s", implode(', ', $normalized['columns']) . ($normalized['type'] === 'UNIQUE' ? ' (UNIQUE)' : '') . "\n\n", "YellowBold");
+                        $this->migrationSummary['indexes_missing']++;
+                        $tableChanges++;
+                        $this->addIndex($table, \obray\data\sql\Index::createSQL($normalized['columns'], $normalized['type']));
+                    }
+                }
+            }
+
             if($tableChanges === 0){
                 $this->migrationSummary['tables_current']++;
             } else {
                 $this->migrationSummary['tables_with_changes']++;
             }
         }
-        
-        
+
+
     }
 
     private function addColumn($table, $sql)
@@ -545,6 +585,37 @@ class Table
                 echo "Continue? (y/n): ";
                 $continue = trim(fgets(STDIN));
                 if (strtolower($continue) !== 'y') {
+                    echo "Stopping on error.\n";
+                    exit(1);
+                }
+            }
+        } else {
+            echo "Operation cancelled.\n";
+        }
+    }
+
+    private function addIndex($table, $sql)
+    {
+        $alterSql = "ALTER TABLE $table ADD $sql;";
+        Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
+        Helpers::console("%s", "\t" . $alterSql . "\n\n");
+        Helpers::console("%s", "*** SQL TO EXECUTE END ***\n\n\n", "WhiteBold");
+        if($this->dryRun){
+            Helpers::console("%s", "[DRY RUN] No changes executed.\n\n", "Yellow");
+            return;
+        }
+        echo "Are you sure you want to make changes? (y/n): ";
+        $userInput = trim(fgets(STDIN));
+        if(strtolower($userInput) === 'y'){
+            echo "Proceeding with changes...\n";
+            try {
+                $this->DBConn->run($alterSql);
+            } catch (\Throwable $e) {
+                Helpers::console("%s", "Error executing SQL:\n", "RedBold");
+                Helpers::console("%s", $e->getMessage() . "\n", "Red");
+                echo "Continue? (y/n): ";
+                $continue = trim(fgets(STDIN));
+                if(strtolower($continue) !== 'y'){
                     echo "Stopping on error.\n";
                     exit(1);
                 }
