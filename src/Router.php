@@ -148,6 +148,9 @@ Class Router
         }
         
         $normalizedBody = self::normalizeEncodedOutput($encoded);
+        if ($this->ServerRequest->getMethod() === Method::HEAD) {
+            $normalizedBody = '';
+        }
         $this->lastResponse = [
             'code' => $code,
             'contentType' => $this->encoder->getContentType(),
@@ -288,6 +291,9 @@ Class Router
     private function invoke($obj, $method, $params, $direct): void
     {    
         if($method === 'index') $method = strtolower($this->ServerRequest->getMethod());
+        if ($method === 'head' && !method_exists($obj, $method) && method_exists($obj, 'get')) {
+            $method = 'get';
+        }
         if(method_exists($obj,$method)){
             if(!$direct && $this->permHandler !== null) $this->permHandler->checkPermissions($obj, $method);
             $this->invoker->invoke($this->ServerRequest, $obj, $method, $params);

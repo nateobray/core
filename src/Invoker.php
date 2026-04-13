@@ -133,6 +133,24 @@ Class Invoker implements InvokerInterface
         }
 
         $type = $parameter->getType();
+        if (
+            $type instanceof \ReflectionNamedType
+            && (string)$type === GETRequest::class
+            && $request instanceof HEADRequest
+        ) {
+            $previousMethod = $_SERVER['REQUEST_METHOD'] ?? null;
+            $_SERVER['REQUEST_METHOD'] = 'GET';
+            try {
+                return new GETRequest((string)$request->getUri(), $request->getQueryParams());
+            } finally {
+                if ($previousMethod === null) {
+                    unset($_SERVER['REQUEST_METHOD']);
+                } else {
+                    $_SERVER['REQUEST_METHOD'] = $previousMethod;
+                }
+            }
+        }
+
         if(in_array((string)$type, [
             ServerRequest::class,
             CONNECTRequest::class,

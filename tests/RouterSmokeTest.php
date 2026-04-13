@@ -8,6 +8,8 @@ namespace {
 
 namespace controllers {
 
+use obray\core\http\requests\GETRequest;
+
 class Dummy
 {
     public $data;
@@ -27,7 +29,7 @@ class Index
 {
     public $html = '<html>shell</html>';
 
-    public function get(): void
+    public function get(GETRequest $request): void
     {
         // no-op; html shell is already set
     }
@@ -108,6 +110,31 @@ if (($fallback['code'] ?? null) !== 200) {
 
 if (($fallback['contentType'] ?? null) !== 'text/html') {
     throw new \RuntimeException('Fallback route should use the HTML encoder.');
+}
+
+$headRouter = new Router($factory, $invoker, null, false, microtime(true));
+$headRouter->addEncoder(JSONEncoder::class, 'data', 'application/json');
+$headRouter->addEncoder(ErrorEncoder::class, 'error', 'application/json');
+$headRouter->addEncoder(HTMLEncoder::class, 'html', 'text/html');
+$headRouter->setNotFoundFallbackController(\controllers\Index::class, static function ($request): bool {
+    return in_array($request->getMethod(), ['GET', 'HEAD'], true)
+        && strpos((string)$request->getUri()->getPath(), '/v1/') !== 0;
+});
+$_SERVER['REQUEST_METHOD'] = 'HEAD';
+$headRouter->route('/company/settings/', [], true);
+$head = $headRouter->getLastResponse();
+$_SERVER['REQUEST_METHOD'] = 'GET';
+
+if (($head['code'] ?? null) !== 200) {
+    throw new \RuntimeException('HEAD fallback route should return 200.');
+}
+
+if (($head['contentType'] ?? null) !== 'text/html') {
+    throw new \RuntimeException('HEAD fallback route should use the HTML encoder.');
+}
+
+if (($head['body'] ?? null) !== '') {
+    throw new \RuntimeException('HEAD fallback route should not include a response body.');
 }
 
 echo "Router JSON smoke test passed\n";
