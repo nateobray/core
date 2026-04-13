@@ -24,6 +24,19 @@ namespace {
     }
 }
 
+namespace obray\data\types {
+
+class Decimal18_6 extends BaseType
+{
+    const TYPE = 'DECIMAL';
+    const LENGTH = '18,6';
+    const NULLABLE = false;
+    const UNSIGNED = false;
+    const DEFAULT = 0.00;
+}
+
+}
+
 namespace {
 
 use obray\data\DBConn;
@@ -369,6 +382,17 @@ assert_true($firstViaHelper->product_name === 'Hammer', 'first() returned unexpe
 
 $missingViaHelper = $querier->select(Product::class)->where(['product_id' => 999])->firstOrNull();
 assert_true($missingViaHelper === null, 'firstOrNull() should return null when no row exists.');
+
+$table = new Table($conn);
+$decimalType = invoke_private_method($table, 'getType', [[
+    'type' => 'decimal',
+    'length' => '18',
+    'precision' => '6',
+    'raw' => 'decimal(18,6)',
+    'not_null' => true,
+    'default' => 'DEFAULT 0.00',
+]]);
+assert_true($decimalType === 'Decimal18_6', 'DECIMAL(18,6) should map to Decimal18_6.');
 
 $newProduct = new Product(...[
     'product_name' => 'Compiler',

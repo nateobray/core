@@ -639,12 +639,20 @@ class Table
                 $precision = $matches[1];
             }
 
+            // Prefer an explicit precision-aware decimal type when one exists in the app/core type registry.
+            if ($precision !== null && $scale !== null) {
+                $precisionAwareType = 'Decimal' . $precision . '_' . $scale;
+                if (!$column['not_null']) {
+                    $precisionAwareType .= 'Nullable';
+                }
+                if (class_exists('obray\\data\\types\\' . $precisionAwareType)) {
+                    return $precisionAwareType;
+                }
+            }
+
             // Keep legacy decimal mappings (Decimal, Decimal5, Decimal6, etc.) for the common DECIMAL(10, <scale>) case.
-            // Add explicit support for DECIMAL(18,5) without changing other precision behaviours.
             $type = 'Decimal';
-            if((int)$precision === 18 && (int)$scale === 5){
-                $type = 'Decimal18_5';
-            } else if (!empty($scale) && $scale != 2) {
+            if (!empty($scale) && $scale != 2) {
                 $type .= $scale;
             }
             if (!$column['not_null']) $type .= 'Nullable';
