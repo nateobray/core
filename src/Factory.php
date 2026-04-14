@@ -6,6 +6,7 @@
 
 namespace obray\core;
 
+use obray\core\exceptions\CircularDependencyException;
 use obray\core\exceptions\ClassNotFound;
 use obray\core\exceptions\DependencyNotFound;
 use obray\core\interfaces\FactoryInterface;
@@ -42,12 +43,18 @@ Class Factory implements FactoryInterface
      * @throws \obray\exceptions\ClassNotFound
      */
 
-    public function make($path,$index=0)
+    public function make($path, $index=0, array $resolving=[])
     {
         // handle errors
         if($path == '\\'){ throw new ClassNotFound("Unable to find Class ".$path, 404); }
         if(!class_exists($path)){ throw new ClassNotFound("Unable to find Class ".$path, 404); }
-        
+
+        if(in_array($path, $resolving)){
+            $chain = implode(' -> ', $resolving) . ' -> ' . $path;
+            throw new CircularDependencyException("Circular dependency detected: " . $chain, 500);
+        }
+        $resolving[] = $path;
+
         $constructor_parameters = array();
         $reflector = new \ReflectionClass($path);
         $constructor = $reflector->getConstructor();
@@ -60,7 +67,7 @@ Class Factory implements FactoryInterface
                 } else {
                     // if we have a factory then make object and return it
                     try{
-                        $constructor_parameters[] = $this->make("\\".$parameter->getType()->getName(),1);
+                        $constructor_parameters[] = $this->make("\\".$parameter->getType()->getName(), 1, $resolving);
                     } catch(ClassNotFound $e){
                         throw new DependencyNotFound("Unable to find class dependency. " . $e->getMessage(), 501);
                     }
