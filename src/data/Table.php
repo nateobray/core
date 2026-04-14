@@ -45,10 +45,10 @@ class Table
         ?array $featureSet = null
     ) {
         $this->DBConn = $DBConn;
-        $this->modelsPath = $modelsPath ?? __BASE_DIR__ . 'src/models';
-        $this->seedsPath = $seedsPath ?? __BASE_DIR__ . 'src/seeds/';
-        $this->dbName = $dbName ?? __BASE_DB_NAME__;
-        $this->featureSet = $featureSet ?? __FEATURE_SET__;
+        $this->modelsPath = $modelsPath ?? (defined('__BASE_DIR__') ? __BASE_DIR__ . 'src/models' : '');
+        $this->seedsPath = $seedsPath ?? (defined('__BASE_DIR__') ? __BASE_DIR__ . 'src/seeds/' : '');
+        $this->dbName = $dbName ?? (defined('__BASE_DB_NAME__') ? __BASE_DB_NAME__ : '');
+        $this->featureSet = $featureSet ?? (defined('__FEATURE_SET__') ? __FEATURE_SET__ : []);
     }
 
      /**
