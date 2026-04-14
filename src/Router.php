@@ -47,6 +47,8 @@ Class Router
     private ?string $notFoundFallbackController = null;
     private $notFoundFallbackCondition = null;
     private $lastResponse = null;
+    private array $timings = [];
+    private int $classLookups = 0;
     protected $content_type;
     
     /**
@@ -87,8 +89,12 @@ Class Router
      */
     public function route($path = '', $params = [], bool $repressResponse = false)
     {
+        $this->timings = [];
+        $this->classLookups = 0;
+
         // generate our server request
         $this->ServerRequest = ServerRequest::createRequest($path, $params);
+        $this->timings['request_parsed'] = microtime(true);
         // generate out path array to use to search
         $path_array = $this->ServerRequest->getExplodedPath();
 
@@ -100,6 +106,7 @@ Class Router
             // use the factory and invoker to create an object invoke its methods
             $this->startingPath = (string)$this->ServerRequest->getUri()->getPath();
             $obj = $this->searchForController($path_array, $this->ServerRequest->getQueryParams());
+            $this->timings['controller_found'] = microtime(true);
             if(method_exists($obj, 'getCode')) $code = $obj->getCode();
             if($this->ServerRequest->getMethod() === Method::CONSOLE){
                 $this->encoder = $this->resolveConsoleEncoder();
@@ -132,6 +139,7 @@ Class Router
         
         // encode our response with the selected encoder
         $encoded = $this->encodeResponse($this->encoder, $obj);
+        $this->timings['encoded'] = microtime(true);
         
         // output if we're in console
         if($this->ServerRequest->getMethod() === Method::CONSOLE){
@@ -202,6 +210,7 @@ Class Router
         $index_path = 'controllers\\' . (!empty($path_array)?implode('\\',$path_array). '\\': '')  . (!empty($object)?$object.'\\':'') . 'Index' ;
 
         // check if path to controller exists, if so create object
+        $this->classLookups++;
         if(class_exists('\\'.$path)) {
             $path_array = explode('\\', $path);
             $params["remaining"] = $remaining;
@@ -213,6 +222,7 @@ Class Router
             return $obj;
         
         // check if index path to controller exists, if so create object
+        $this->classLookups++;
         } else if (class_exists('\\'.$index_path)) {
             $path_array = explode('\\', $index_path);
             $params["remaining"] = $remaining;
@@ -487,6 +497,19 @@ Class Router
     public function getLastResponse()
     {
         return $this->lastResponse;
+    }
+
+    public function getTimings(): array
+    {
+        $s = $this->start_time;
+        $t = $this->timings;
+        return [
+            'request_ms'    => isset($t['request_parsed'])   ? round(($t['request_parsed']   - $s) * 1000, 3) : null,
+            'routing_ms'    => isset($t['controller_found']) ? round(($t['controller_found']  - ($t['request_parsed'] ?? $s)) * 1000, 3) : null,
+            'encoding_ms'   => isset($t['encoded'])          ? round(($t['encoded']           - ($t['controller_found'] ?? $t['request_parsed'] ?? $s)) * 1000, 3) : null,
+            'total_ms'      => isset($t['encoded'])          ? round(($t['encoded']           - $s) * 1000, 3) : null,
+            'class_lookups' => $this->classLookups,
+        ];
     }
 
     private function shouldUseNotFoundFallback(array $remaining): bool

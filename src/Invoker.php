@@ -28,6 +28,8 @@ use TypeError;
 Class Invoker implements InvokerInterface
 {
     private ?LoggerInterface $logger;
+    private static array $reflectorCache = [];
+    private static array $methodCache = [];
 
     public function __construct(?LoggerInterface $logger = null)
     {
@@ -51,16 +53,18 @@ Class Invoker implements InvokerInterface
             $normalizedKey = str_replace('-', '_', $key);
             $normalizedParams[$normalizedKey] = $value;
         }
-         // reflect the object 
+         // reflect the object
+         $className = is_object($object) ? get_class($object) : (string)$object;
          try {
-             $reflector = new \ReflectionClass($object);
+             $reflector = self::$reflectorCache[$className] ??= new \ReflectionClass($object);
          } catch (\ReflectionException $e) {
              throw new ClassNotFound("Unable to find object.", 404);
          }
- 
+
          // reflect method and extract parameters
+         $methodCacheKey = $className . '::' . $method;
          try {
-             $reflection_method = $reflector->getMethod($method);
+             $reflection_method = self::$methodCache[$methodCacheKey] ??= $reflector->getMethod($method);
              $parameters = $reflection_method->getParameters();
          } catch (\ReflectionException $e) {
              throw new ClassMethodNotFound("Unable to find object method.", 404);

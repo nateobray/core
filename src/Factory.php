@@ -22,6 +22,7 @@ Class Factory implements FactoryInterface
 {
     /** @var \Psr\Container\ContainerInterface Stores the available container */
     protected $container;
+    private static array $reflectorCache = [];
     
     /**
      * The constructor assigns the available container
@@ -56,7 +57,7 @@ Class Factory implements FactoryInterface
         $resolving[] = $path;
 
         $constructor_parameters = array();
-        $reflector = new \ReflectionClass($path);
+        $reflector = self::$reflectorCache[$path] ??= new \ReflectionClass($path);
         $constructor = $reflector->getConstructor();
         if( !empty($constructor) ){
             $parameters = $constructor->getParameters();

@@ -804,8 +804,14 @@ class Table
      * @param string $class
      * @return array $columns
      */
+    private static array $columnCache = [];
+
     static public function getColumns(string $class) : array
     {
+        if (isset(self::$columnCache[$class])) {
+            return self::$columnCache[$class];
+        }
+
         $reflection = new \ReflectionClass($class);
         $properties = $reflection->getProperties();
 
@@ -815,7 +821,7 @@ class Table
             if($propertyType === null) continue;
             $propertyClass = $propertyType->getName();
             if(strpos($propertyClass, 'obray\\dataTypes\\') === false && strpos($property->name, 'col_') !== 0) continue;
-            
+
             $columns[] = (object)[
                 'name' => $property->name,
                 'class' => $property->class,
@@ -823,7 +829,7 @@ class Table
                 'propertyName' => substr($property->name, 4)
             ];
         }
-        return $columns;
+        return self::$columnCache[$class] = $columns;
     }
 
     /**
