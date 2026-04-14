@@ -11,6 +11,10 @@ use ReflectionClass;
 class Table
 {
     private DBConn $DBConn;
+    private string $modelsPath;
+    private string $seedsPath;
+    private string $dbName;
+    private array $featureSet;
     private $tableCreationCount = 0;
     private $tablesCreated = [];
     private $tables = [];
@@ -33,9 +37,18 @@ class Table
     private bool $seedsOnly = false;
     private ?array $tableFilter = null;
 
-    public function __construct(DBConn $DBConn)
-    {
+    public function __construct(
+        DBConn $DBConn,
+        ?string $modelsPath = null,
+        ?string $seedsPath = null,
+        ?string $dbName = null,
+        ?array $featureSet = null
+    ) {
         $this->DBConn = $DBConn;
+        $this->modelsPath = $modelsPath ?? __BASE_DIR__ . 'src/models';
+        $this->seedsPath = $seedsPath ?? __BASE_DIR__ . 'src/seeds/';
+        $this->dbName = $dbName ?? __BASE_DB_NAME__;
+        $this->featureSet = $featureSet ?? __FEATURE_SET__;
     }
 
      /**
@@ -92,7 +105,7 @@ class Table
         // get a list of existing tables
         $stmt = $this->DBConn->query("SELECT * 
                                 FROM INFORMATION_SCHEMA.TABLES 
-                               WHERE TABLE_SCHEMA = '" . __BASE_DB_NAME__ . "';"
+                               WHERE TABLE_SCHEMA = '" . $this->dbName . "';"
         );
         $this->tables = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -177,10 +190,10 @@ class Table
      */
     private function createTablesFromModelsFolder(string $path = '/', bool $printTable = true, bool $printSQL = true, bool $printSeeds = true) : void
     {
-        $files = scandir(__BASE_DIR__ . 'src/models' . $path);
+        $files = scandir($this->modelsPath . $path);
         forEach($files as $i => $file){
             if($i < 2) continue;
-            if(is_dir(__BASE_DIR__ . 'src/models' . $path . $file)){
+            if(is_dir($this->modelsPath . $path . $file)){
                 $this->createTablesFromModelsFolder( $path . $file . '/', $printTable, $printSQL, $printSeeds);
             } else {
                 $modelPath = str_replace('/', '\\', $path);
@@ -192,7 +205,7 @@ class Table
                     if(empty($ClassFeatureSet)) continue;
                     
                     // Check against Feature Set
-                    if(!empty(array_intersect(__FEATURE_SET__, $ClassFeatureSet))){
+                    if(!empty(array_intersect($this->featureSet, $ClassFeatureSet))){
                         // Helpers::console("%s", $classStr . "\n", "GreenBold");
                         $this->create($classStr, $printTable, $printSQL, $printSeeds);
                     }
@@ -855,7 +868,7 @@ class Table
             }
         }
         
-        $handle = fopen(__BASE_DIR__ . 'src/seeds/' . $SeedFile, 'r');
+        $handle = fopen($this->seedsPath . $SeedFile, 'r');
         $count = 0; $keys = [];
         $localInserted = 0; $localUpdated = 0;
         if ($handle !== false) {
