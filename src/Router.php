@@ -114,6 +114,7 @@ Class Router
                 $this->setEncoderByClassProperty($obj);
             }
         } catch (HTTPException $e) {
+            $this->timings['controller_found'] = microtime(true);
             // make our object the exception
             $obj = $e;
             // get the status code from the exception
@@ -122,6 +123,7 @@ Class Router
             $this->encoder = $this->resolveErrorEncoder(true);
             $this->content_type = $this->encoder->getContentType();
         } catch (\Exception $e) {
+            $this->timings['controller_found'] = microtime(true);
             // make our object the exception
             $obj = $e;
             // since we don't know what kind of exception we're dealing with, go with code 500
