@@ -18,7 +18,7 @@ class Table
     private $tableCreationCount = 0;
     private $tablesCreated = [];
     private $tables = [];
-    private $migrationSummary = [
+    protected $migrationSummary = [
         'tables_checked' => 0,
         'tables_current' => 0,
         'tables_with_changes' => 0,
@@ -331,7 +331,7 @@ class Table
         if(!$this->dryRun) $this->enableConstraints();
     }
 
-    private function updateTable($table, $class)
+    protected function updateTable($table, $class)
     {
         $this->migrationSummary['tables_checked']++;
         //print_r($class . "\n");
@@ -537,7 +537,7 @@ class Table
 
     }
 
-    private function addColumn($table, $sql)
+    protected function addColumn($table, $sql)
     {
         $alterSql = "ALTER TABLE $table ADD COLUMN $sql;";
 
@@ -573,7 +573,7 @@ class Table
 
     }
 
-    private function addForeignKey($table, $sql = '')
+    protected function addForeignKey($table, $sql = '')
     {
         $alterSql = "ALTER TABLE $table ADD $sql;";
         Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
@@ -607,7 +607,7 @@ class Table
         }
     }
 
-    private function addIndex($table, $sql)
+    protected function addIndex($table, $sql)
     {
         $alterSql = "ALTER TABLE $table ADD $sql;";
         Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
@@ -638,7 +638,7 @@ class Table
         }
     }
 
-    private function alterTable($table, $sql)
+    protected function alterTable($table, $sql)
     {
         $alterSql = "ALTER TABLE $table MODIFY COLUMN $sql;";
         Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
