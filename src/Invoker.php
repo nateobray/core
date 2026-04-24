@@ -132,8 +132,7 @@ Class Invoker implements InvokerInterface
         }
 
         if ($parameter->isDefaultValueAvailable() && $parameter->isDefaultValueConstant()) {
-            $constant = $parameter->getDefaultValueConstantName();
-            return constant($constant);
+            return self::resolveDefaultValueConstant($parameter);
         }
 
         $type = $parameter->getType();
@@ -174,6 +173,44 @@ Class Invoker implements InvokerInterface
         if (!$parameter->isOptional() && !$parameter->isDefaultValueAvailable()) {
             throw new \Exception("Missing parameter " . $parameter->getName() . ".", 500);
         }
+    }
+
+    private static function resolveDefaultValueConstant(\ReflectionParameter $parameter)
+    {
+        $constant = $parameter->getDefaultValueConstantName();
+        if ($constant === null || strpos($constant, '::') === false) {
+            return constant($constant);
+        }
+
+        [$className, $constantName] = explode('::', $constant, 2);
+        if (in_array($className, ['self', 'parent', 'static'], true)) {
+            $declaringClass = $parameter->getDeclaringClass();
+            if (!$declaringClass instanceof \ReflectionClass) {
+                return constant($constant);
+            }
+
+            if ($className === 'parent') {
+                $declaringClass = $declaringClass->getParentClass();
+                if (!$declaringClass instanceof \ReflectionClass) {
+                    return constant($constant);
+                }
+            }
+
+            $className = $declaringClass->getName();
+        }
+
+        try {
+            $reflectionClass = new \ReflectionClass(ltrim($className, '\\'));
+        } catch (\ReflectionException $e) {
+            return constant($constant);
+        }
+
+        $reflectionConstant = $reflectionClass->getReflectionConstant($constantName);
+        if ($reflectionConstant instanceof \ReflectionClassConstant) {
+            return $reflectionConstant->getValue();
+        }
+
+        return constant($reflectionClass->getName() . '::' . $constantName);
     }
 
 }
