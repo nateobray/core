@@ -18,6 +18,17 @@ namespace {
 // Fixture classes in their own namespace to avoid collisions
 namespace factory\fixtures {
 
+    class OptionalScalarConfig {
+        public function __construct(
+            public string $modelsPath = '',
+            public array $featureSet = []
+        ) {}
+    }
+
+    class RequiredScalarConfig {
+        public function __construct(public string $modelsPath) {}
+    }
+
     class Engine {}
 
     class Car {
@@ -49,8 +60,30 @@ namespace {
 
     use obray\core\Factory;
     use obray\core\exceptions\CircularDependencyException;
+    use obray\core\exceptions\DependencyNotFound;
 
     $factory = new Factory();
+
+    // --- Builtin scalar defaults are left alone instead of routed through DI ---
+
+    $optionalScalarConfig = $factory->make(\factory\fixtures\OptionalScalarConfig::class);
+    assert_factory($optionalScalarConfig instanceof \factory\fixtures\OptionalScalarConfig, 'Factory should instantiate OptionalScalarConfig.');
+    assert_factory($optionalScalarConfig->modelsPath === '', 'Factory should preserve default string constructor values.');
+    assert_factory($optionalScalarConfig->featureSet === [], 'Factory should preserve default array constructor values.');
+
+    // --- Required builtin scalars still fail with a clear dependency error ---
+
+    $caught = false;
+    try {
+        $factory->make(\factory\fixtures\RequiredScalarConfig::class);
+    } catch (DependencyNotFound $e) {
+        $caught = true;
+        assert_factory(
+            strpos($e->getMessage(), 'builtin dependency string') !== false,
+            'Exception message should explain that a required builtin dependency could not be resolved.'
+        );
+    }
+    assert_factory($caught, 'Required builtin scalar dependencies should throw DependencyNotFound.');
 
     // --- Normal instantiation with a dependency still works ---
 
