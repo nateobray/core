@@ -419,7 +419,12 @@ class Table
                     }         
                 }
                 
-                if(($selectedClassCol && $isColumnFound && 'obray\\data\\types\\' . $type != $selectedClassCol->propertyClass)) {
+                if(
+                    $selectedClassCol
+                    && $isColumnFound
+                    && 'obray\\data\\types\\' . $type != $selectedClassCol->propertyClass
+                    && !$this->columnSqlDefinitionsMatch($type, $selectedClassCol->propertyClass, str_replace('col_', '', $selectedClassCol->name))
+                ) {
 
                     //print_r(('obray\\data\\types\\' . $type)::createSQL($column['name']) . "\n");
                     //print_r($column);
@@ -710,6 +715,8 @@ class Table
                 return 'BooleanTrue';
             case 'text':
                 return 'Text';
+            case 'mediumtext':
+                return 'MediumText';
         case 'decimal':
             // Prefer the precision captured, but fall back to parsing the raw column definition
             $scale = $column['precision'];
@@ -751,6 +758,21 @@ class Table
                 // Return the raw type string so it can still be surfaced for debugging
                 return ucfirst($type);
         }
+    }
+
+    private function columnSqlDefinitionsMatch(string $currentType, string $definedTypeClass, string $columnName): bool
+    {
+        $currentTypeClass = 'obray\\data\\types\\' . $currentType;
+        if (!class_exists($currentTypeClass) || !class_exists($definedTypeClass)) {
+            return false;
+        }
+
+        return $this->normalizeColumnSql($currentTypeClass::createSQL($columnName)) === $this->normalizeColumnSql($definedTypeClass::createSQL($columnName));
+    }
+
+    private function normalizeColumnSql(string $sql): string
+    {
+        return strtolower(trim(preg_replace('/\s+/', ' ', $sql)));
     }
 
     

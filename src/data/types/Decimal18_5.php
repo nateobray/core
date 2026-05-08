@@ -9,4 +9,3 @@ class Decimal18_5 extends BaseType
     const UNSIGNED = false;
     const DEFAULT = 0.00;
 }
-

@@ -9,6 +9,7 @@ namespace {
 
     use obray\data\DBConn;
     use obray\data\Table;
+    use tests\fixtures\MigrationContent;
     use tests\fixtures\MigrationProduct;
 
     function assert_mig(bool $condition, string $message): void
@@ -250,6 +251,24 @@ namespace {
     assert_mig(count($t->addedForeignKeys) === 0, 'Clean table should add no FKs.');
     assert_mig(count($t->addedIndexes)     === 0, 'Clean table should add no indexes.');
     assert_mig($t->getSummary()['tables_current'] === 1, 'Clean table should increment tables_current.');
+
+    // ---------------------------------------------------------------------------
+    // Test 8: Custom type with equivalent SQL does not trigger a no-op ALTER
+    // ---------------------------------------------------------------------------
+
+    $conn = new MigrationFakeDBConn();
+    $conn->setShowCreateTable('migration_contents',
+        "CREATE TABLE `migration_contents` (\n"
+        . "  `content_id` int(11) NOT NULL AUTO_INCREMENT,\n"
+        . "  `content_html` mediumtext DEFAULT NULL,\n"
+        . "  PRIMARY KEY (`content_id`)\n"
+        . ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    );
+    $t = new TestableTable($conn);
+    $t->runUpdateTable('migration_contents', MigrationContent::class);
+
+    assert_mig(count($t->alteredColumns) === 0, 'Equivalent custom SQL type should not trigger alterTable.');
+    assert_mig($t->getSummary()['columns_mismatched'] === 0, 'Equivalent custom SQL type should not count as mismatched.');
 
     echo "Migration detection tests passed\n";
 }
