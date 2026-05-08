@@ -35,6 +35,7 @@ class Table
     private bool $verbose = false;
     private bool $skipSeeds = false;
     private bool $seedsOnly = false;
+    private bool $assumeYes = false;
     private ?array $tableFilter = null;
 
     public function __construct(
@@ -66,6 +67,8 @@ class Table
      * @param string $tables Comma separated list of table names to include (others skipped)
      * @param bool $skip_seeds Skip seeding entirely
      * @param bool $seeds_only Only run seeds, skip schema changes/creation
+     * @param bool $assume_yes Execute schema changes without prompting for each change
+     * @param bool $yes Alias for assume_yes
      * 
      * @return void
      */
@@ -79,7 +82,9 @@ class Table
         bool $verbose = false,
         string $tables = '',
         bool $skip_seeds = false,
-        bool $seeds_only = false
+        bool $seeds_only = false,
+        bool $assume_yes = false,
+        bool $yes = false
     ) : void
     {
         // normalize flags from CLI query params
@@ -88,6 +93,7 @@ class Table
         $this->verbose = filter_var($verbose, FILTER_VALIDATE_BOOLEAN);
         $this->skipSeeds = filter_var($skip_seeds, FILTER_VALIDATE_BOOLEAN);
         $this->seedsOnly = filter_var($seeds_only, FILTER_VALIDATE_BOOLEAN);
+        $this->assumeYes = filter_var($assume_yes, FILTER_VALIDATE_BOOLEAN) || filter_var($yes, FILTER_VALIDATE_BOOLEAN);
         if(!empty($tables)){
             $this->tableFilter = array_map('strtolower', array_map('trim', explode(',', $tables)));
         }
@@ -550,33 +556,7 @@ class Table
         Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
         Helpers::console("%s", "\t" . $alterSql . "\n\n");
         Helpers::console("%s", "*** SQL TO EXECUTE END ***\n\n\n", "WhiteBold");
-        if($this->dryRun){
-            Helpers::console("%s", "[DRY RUN] No changes executed.\n\n", "Yellow");
-            return;
-        }
-        // Prompt the user for confirmation
-        echo "Are you sure you want to make changes? (y/n): ";
-        $userInput = trim(fgets(STDIN)); // Read user input from the standard input
-
-        // Check if the user input is "y" or "Y"
-        if (strtolower($userInput) === 'y') {
-            echo "Proceeding with changes...\n";
-            try {
-                $this->DBConn->run($alterSql);
-            } catch (\Throwable $e) {
-                Helpers::console("%s", "Error executing SQL:\n", "RedBold");
-                Helpers::console("%s", $e->getMessage() . "\n", "Red");
-                echo "Continue? (y/n): ";
-                $continue = trim(fgets(STDIN));
-                if (strtolower($continue) !== 'y') {
-                    echo "Stopping on error.\n";
-                    exit(1);
-                }
-            }
-        } else {
-            echo "Operation cancelled.\n";
-        }
-
+        $this->executeSchemaSql($alterSql);
     }
 
     protected function addForeignKey($table, $sql = '')
@@ -585,32 +565,7 @@ class Table
         Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
         Helpers::console("%s", "\t" . $alterSql . "\n\n");
         Helpers::console("%s", "*** SQL TO EXECUTE END ***\n\n\n", "WhiteBold");
-        if($this->dryRun){
-            Helpers::console("%s", "[DRY RUN] No changes executed.\n\n", "Yellow");
-            return;
-        }
-        // Prompt the user for confirmation
-        echo "Are you sure you want to make changes? (y/n): ";
-        $userInput = trim(fgets(STDIN)); // Read user input from the standard input
-
-        // Check if the user input is "y" or "Y"
-        if (strtolower($userInput) === 'y') {
-            echo "Proceeding with changes...\n";
-            try {
-                $this->DBConn->run($alterSql);
-            } catch (\Throwable $e) {
-                Helpers::console("%s", "Error executing SQL:\n", "RedBold");
-                Helpers::console("%s", $e->getMessage() . "\n", "Red");
-                echo "Continue? (y/n): ";
-                $continue = trim(fgets(STDIN));
-                if (strtolower($continue) !== 'y') {
-                    echo "Stopping on error.\n";
-                    exit(1);
-                }
-            }
-        } else {
-            echo "Operation cancelled.\n";
-        }
+        $this->executeSchemaSql($alterSql);
     }
 
     protected function addIndex($table, $sql)
@@ -619,29 +574,7 @@ class Table
         Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
         Helpers::console("%s", "\t" . $alterSql . "\n\n");
         Helpers::console("%s", "*** SQL TO EXECUTE END ***\n\n\n", "WhiteBold");
-        if($this->dryRun){
-            Helpers::console("%s", "[DRY RUN] No changes executed.\n\n", "Yellow");
-            return;
-        }
-        echo "Are you sure you want to make changes? (y/n): ";
-        $userInput = trim(fgets(STDIN));
-        if(strtolower($userInput) === 'y'){
-            echo "Proceeding with changes...\n";
-            try {
-                $this->DBConn->run($alterSql);
-            } catch (\Throwable $e) {
-                Helpers::console("%s", "Error executing SQL:\n", "RedBold");
-                Helpers::console("%s", $e->getMessage() . "\n", "Red");
-                echo "Continue? (y/n): ";
-                $continue = trim(fgets(STDIN));
-                if(strtolower($continue) !== 'y'){
-                    echo "Stopping on error.\n";
-                    exit(1);
-                }
-            }
-        } else {
-            echo "Operation cancelled.\n";
-        }
+        $this->executeSchemaSql($alterSql);
     }
 
     protected function alterTable($table, $sql)
@@ -650,33 +583,46 @@ class Table
         Helpers::console("%s", "*** SQL TO EXECUTE START ***\n\n", "WhiteBold");
         Helpers::console("%s", "\t" . $alterSql . "\n\n");
         Helpers::console("%s", "*** SQL TO EXECUTE END ***\n\n\n", "WhiteBold");
+        $this->executeSchemaSql($alterSql);
+    }
+
+    private function executeSchemaSql(string $alterSql): void
+    {
         if($this->dryRun){
             Helpers::console("%s", "[DRY RUN] No changes executed.\n\n", "Yellow");
             return;
         }
-        // Prompt the user for confirmation
-        echo "Are you sure you want to make changes? (y/n): ";
-        $userInput = trim(fgets(STDIN)); // Read user input from the standard input
 
-        // Check if the user input is "y" or "Y"
-        if (strtolower($userInput) === 'y') {
-            echo "Proceeding with changes...\n";
-            try {
-                $this->DBConn->run($alterSql);
-            } catch (\Throwable $e) {
-                Helpers::console("%s", "Error executing SQL:\n", "RedBold");
-                Helpers::console("%s", $e->getMessage() . "\n", "Red");
-                echo "Continue? (y/n): ";
-                $continue = trim(fgets(STDIN));
-                if (strtolower($continue) !== 'y') {
-                    echo "Stopping on error.\n";
-                    exit(1);
-                }
-            }
-        } else {
+        if (!$this->confirmSchemaChange()) {
             echo "Operation cancelled.\n";
+            return;
         }
 
+        echo "Proceeding with changes...\n";
+        try {
+            $this->DBConn->run($alterSql);
+        } catch (\Throwable $e) {
+            Helpers::console("%s", "Error executing SQL:\n", "RedBold");
+            Helpers::console("%s", $e->getMessage() . "\n", "Red");
+            echo "Continue? (y/n): ";
+            $continue = trim(fgets(STDIN));
+            if (strtolower($continue) !== 'y') {
+                echo "Stopping on error.\n";
+                exit(1);
+            }
+        }
+    }
+
+    private function confirmSchemaChange(): bool
+    {
+        if ($this->assumeYes) {
+            Helpers::console("%s", "[ASSUME YES] Executing without per-change prompt.\n", "Yellow");
+            return true;
+        }
+
+        echo "Are you sure you want to make changes? (y/n): ";
+        $userInput = trim(fgets(STDIN));
+        return strtolower($userInput) === 'y';
     }
 
     private function getType($column)

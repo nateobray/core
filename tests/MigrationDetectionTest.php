@@ -30,6 +30,7 @@ namespace {
     class MigrationFakeDBConn extends DBConn
     {
         private array $ddlMap = [];
+        public array $runSql = [];
 
         public function __construct()
         {
@@ -60,6 +61,12 @@ namespace {
                 };
             }
             return new class { public function fetch() { return false; } };
+        }
+
+        public function run($sql, $bind = [], $fetchStyle = \PDO::FETCH_OBJ)
+        {
+            $this->runSql[] = $sql;
+            return [];
         }
     }
 
@@ -102,6 +109,14 @@ namespace {
         protected function addIndex($table, $sql): void
         {
             $this->addedIndexes[] = $sql;
+        }
+    }
+
+    class SchemaExecutionTable extends Table
+    {
+        public function runAddIndex(): void
+        {
+            $this->addIndex('migration_contents', 'INDEX `idx_content_html` (`content_html`)');
         }
     }
 
@@ -269,6 +284,24 @@ namespace {
 
     assert_mig(count($t->alteredColumns) === 0, 'Equivalent custom SQL type should not trigger alterTable.');
     assert_mig($t->getSummary()['columns_mismatched'] === 0, 'Equivalent custom SQL type should not count as mismatched.');
+
+    // ---------------------------------------------------------------------------
+    // Test 9: assume_yes executes schema SQL without reading STDIN
+    // ---------------------------------------------------------------------------
+
+    $conn = new MigrationFakeDBConn();
+    $t = new SchemaExecutionTable($conn);
+    $assumeYes = new \ReflectionProperty(Table::class, 'assumeYes');
+    $assumeYes->setAccessible(true);
+    $assumeYes->setValue($t, true);
+
+    ob_start();
+    $t->runAddIndex();
+    $output = ob_get_clean();
+
+    assert_mig(count($conn->runSql) === 1, 'assume_yes should execute the schema SQL.');
+    assert_mig(stripos($output, 'Are you sure') === false, 'assume_yes should not prompt for confirmation.');
+    assert_mig(stripos($output, '[ASSUME YES]') !== false, 'assume_yes should be visible in output.');
 
     echo "Migration detection tests passed\n";
 }
