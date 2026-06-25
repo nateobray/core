@@ -47,7 +47,7 @@ Class DBConn
         $this->db_engine = $db_engine;
         $this->db_char_set = $char_set;
         $this->pdo_options = $pdo_options + [
-            \PDO::ATTR_PERSISTENT => true,
+            \PDO::ATTR_PERSISTENT => false,
             \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
             \PDO::ATTR_EMULATE_PREPARES => true
         ];
@@ -276,6 +276,8 @@ Class DBConn
             . ';port=' . $this->port
             . ';dbname=' . $this->db_name
             . ';charset=' . $this->db_char_set;
-        $this->pool_key = hash('sha256', $this->dsn . $this->username . $this->password);
+        $poolOptions = $this->pdo_options;
+        ksort($poolOptions);
+        $this->pool_key = hash('sha256', $this->dsn . $this->username . $this->password . serialize($poolOptions));
     }
 }
