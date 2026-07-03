@@ -13,6 +13,10 @@ class MigrationProduct extends DBO
     public const INDEXES = [
         ['category_id'],
         ['product_name', 'UNIQUE'],
+        [
+            'name' => 'idx_migration_product_category_name',
+            'columns' => ['category_id', 'product_name'],
+        ],
     ];
 
     public const FOREIGN_KEYS = [

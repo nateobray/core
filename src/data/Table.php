@@ -534,7 +534,7 @@ class Table
                         Helpers::console("%s", implode(', ', $normalized['columns']) . ($normalized['type'] === 'UNIQUE' ? ' (UNIQUE)' : '') . "\n\n", "YellowBold");
                         $this->migrationSummary['indexes_missing']++;
                         $tableChanges++;
-                        $this->addIndex($table, \obray\data\sql\Index::createSQL($normalized['columns'], $normalized['type']));
+                        $this->addIndex($table, \obray\data\sql\Index::createSQL($normalized['columns'], $normalized['type'], $normalized['name'] ?? null));
                     }
                 }
             }

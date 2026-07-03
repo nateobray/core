@@ -32,6 +32,10 @@ namespace {
     $sql4 = Index::createSQL(['col1', 'col2']);
     assert_true_idx(strpos($sql4, 'idx_col1_col2') !== false, 'Multi-column index should join column names.');
 
+    $namedSql = Index::createSQL(['col1', 'col2'], Index::INDEX, 'idx_explicit_name');
+    assert_true_idx(strpos($namedSql, 'KEY `idx_explicit_name`') !== false, 'Explicit index name should be used when provided.');
+    assert_true_idx(strpos($namedSql, '`col1`') !== false && strpos($namedSql, '`col2`') !== false, 'Explicitly named index should keep the provided columns.');
+
     // --- createSQL: truncation at 64 chars ---
 
     $longCols = ['analytic_type_id', 'analytic_date', 'customer_id', 'category_id', 'brand_id', 'item_id', 'sales_channel_id'];
@@ -78,6 +82,25 @@ namespace {
 
     $n = Index::normalize(['col_name', 'unique']);
     assert_true_idx($n['type'] === 'UNIQUE', 'normalize() should uppercase the type.');
+
+    // --- normalize: named associative format ---
+
+    $n = Index::normalize([
+        'name' => 'idx_named_composite',
+        'columns' => ['col1', 'col2'],
+    ]);
+    assert_true_idx($n['name'] === 'idx_named_composite', 'Named associative index should preserve the explicit name.');
+    assert_true_idx($n['columns'] === ['col1', 'col2'], 'Named associative index should parse columns correctly.');
+    assert_true_idx($n['type'] === '', 'Named associative index with no type should default to empty type.');
+
+    $n = Index::normalize([
+        'name' => 'uniq_named_col',
+        'columns' => 'col_name',
+        'type' => 'unique',
+    ]);
+    assert_true_idx($n['name'] === 'uniq_named_col', 'Named unique index should preserve the explicit name.');
+    assert_true_idx($n['columns'] === ['col_name'], 'Named associative index should accept a single string column.');
+    assert_true_idx($n['type'] === 'UNIQUE', 'Named associative index should normalize the type.');
 
     echo "Index tests passed\n";
 }

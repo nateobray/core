@@ -182,11 +182,12 @@ namespace {
     $t = new TestableTable($conn);
     $t->runUpdateTable('migration_products', MigrationProduct::class);
 
-    assert_mig(count($t->addedIndexes) === 2, 'Both missing indexes should be detected.');
+    assert_mig(count($t->addedIndexes) === 3, 'All missing indexes should be detected.');
     $indexSQL = implode(' ', $t->addedIndexes);
     assert_mig(stripos($indexSQL, 'category_id') !== false, 'Regular index on category_id should be added.');
     assert_mig(stripos($indexSQL, 'UNIQUE') !== false, 'Unique index on product_name should be added.');
-    assert_mig($t->getSummary()['indexes_missing'] === 2, 'indexes_missing count should be 2.');
+    assert_mig(stripos($indexSQL, 'idx_migration_product_category_name') !== false, 'Named composite index should use the explicit name.');
+    assert_mig($t->getSummary()['indexes_missing'] === 3, 'indexes_missing count should be 3.');
 
     // ---------------------------------------------------------------------------
     // Test 4: Existing index is not re-added
@@ -200,7 +201,8 @@ namespace {
         . "  `category_id` int(11) unsigned NOT NULL,\n"
         . "  PRIMARY KEY (`product_id`),\n"
         . "  KEY `idx_category_id` (`category_id`) USING BTREE,\n"
-        . "  UNIQUE KEY `uniq_product_name` (`product_name`) USING BTREE\n"
+        . "  UNIQUE KEY `uniq_product_name` (`product_name`) USING BTREE,\n"
+        . "  KEY `legacy_category_name` (`category_id`,`product_name`) USING BTREE\n"
         . ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     );
     $t = new TestableTable($conn);
@@ -255,6 +257,7 @@ namespace {
         . "  PRIMARY KEY (`product_id`),\n"
         . "  KEY `idx_category_id` (`category_id`) USING BTREE,\n"
         . "  UNIQUE KEY `uniq_product_name` (`product_name`) USING BTREE,\n"
+        . "  KEY `legacy_category_name` (`category_id`,`product_name`) USING BTREE,\n"
         . "  CONSTRAINT `fk_migprod_cat` FOREIGN KEY (`category_id`) REFERENCES `categories` (`category_id`)\n"
         . ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     );
