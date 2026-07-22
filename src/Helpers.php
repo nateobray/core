@@ -56,7 +56,7 @@ class Helpers
     static public function console(){
 
         $args = func_get_args();
-        if( PHP_SAPI !== 'cli' && empty($args) ) return;
+        if (PHP_SAPI !== 'cli' || empty($args)) return;
 
         if( is_array($args[0]) || is_object($args[0]) || $args[0] === null ) {
             print_r($args[0]);
