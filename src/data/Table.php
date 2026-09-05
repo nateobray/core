@@ -27,6 +27,8 @@ class Table
         'columns_mismatched' => 0,
         'foreign_keys_missing' => 0,
         'indexes_missing' => 0,
+        'triggers_checked' => 0,
+        'triggers_missing' => 0,
         'seeds_inserted' => 0,
         'seeds_updated' => 0
     ];
@@ -176,6 +178,8 @@ class Table
             "%s",
             sprintf("\tIndexes missing: %d\n", $this->migrationSummary['indexes_missing'])
         );
+        Helpers::console("%s", sprintf("\tTriggers: %d checked | %d missing\n",
+            $this->migrationSummary['triggers_checked'], $this->migrationSummary['triggers_missing']));
         Helpers::console(
             "%s",
             sprintf("\tSeeds applied: %d inserts | %d updates\n\n", $this->migrationSummary['seeds_inserted'], $this->migrationSummary['seeds_updated'])
@@ -251,7 +255,13 @@ class Table
             return;
         }
 
+        // Preflight every declared trigger before changing this table. Conflicts
+        // must not leave a partially installed set of history protections.
+        $triggerPlan = (new ModelTriggers($this->DBConn))->plan($class);
+        $this->migrationSummary['triggers_checked'] += count(defined($class . '::TRIGGERS') ? $class::TRIGGERS : []);
+        $this->migrationSummary['triggers_missing'] += count($triggerPlan);
         if(!$this->dryRun) $this->disableConstraints();
+        try {
 
         $reflection = new \ReflectionClass($class);
         $properties = $reflection->getProperties();
@@ -263,7 +273,12 @@ class Table
 
         if(in_array($class::TABLE, $this->tables)){
 
+            $currentBefore = $this->migrationSummary['tables_current'];
             $this->updateTable($class::TABLE, $class);
+            if ($triggerPlan !== [] && $this->migrationSummary['tables_current'] > $currentBefore) {
+                $this->migrationSummary['tables_current']--;
+                $this->migrationSummary['tables_with_changes']++;
+            }
             
             if(!$this->skipSeeds && !$this->dryRun && defined($class . '::KEEP_SEEDS_CURRENT') && defined($class . '::SEED_FILE')){
                 $this->seedFile($class, $printSeeds);
@@ -273,6 +288,7 @@ class Table
                 $this->seedConstants($class, $columns, $printSeeds);
             }
 
+            $this->applyTriggerPlan($triggerPlan, $this->dryRun, $this->assumeYes);
             return;
         }
 
@@ -335,7 +351,36 @@ class Table
             $this->seedConstants($class, $columns, $printSeeds);
         }
 
-        if(!$this->dryRun) $this->enableConstraints();
+        // Direct create already authorizes creating this new table and its schema.
+        $this->applyTriggerPlan($triggerPlan, $this->dryRun, true);
+        } finally {
+            if(!$this->dryRun) $this->enableConstraints();
+        }
+    }
+
+    /** Targeted trigger repair using the same model contract as create/migrate. */
+    public function migrateTriggers(string $class, bool $dry_run = true, bool $assume_yes = false): array
+    {
+        $plan = (new ModelTriggers($this->DBConn))->plan($class);
+        $this->applyTriggerPlan($plan, $dry_run, $assume_yes);
+        return $plan;
+    }
+
+    private function applyTriggerPlan(array $plan, bool $dryRun, bool $assumeYes): void
+    {
+        foreach ($plan as $sql) {
+            Helpers::console("%s", "\n{$sql}\n", "Blue");
+        }
+        if ($plan === []) return;
+        if ($dryRun) {
+            Helpers::console("%s", "[DRY RUN] No triggers installed.\n", "Yellow");
+            return;
+        }
+        if (!$assumeYes && !$this->confirmSchemaChange()) {
+            throw new \RuntimeException('Trigger migration cancelled; required schema protections are not installed.');
+        }
+        // DDL errors must propagate. Never report a protected schema after failure.
+        foreach ($plan as $sql) $this->DBConn->run($sql);
     }
 
     protected function updateTable($table, $class)
@@ -971,6 +1016,7 @@ class Table
             'TABLE',
             'FOREIGN_KEYS',
             'INDEXES',
+            'TRIGGERS',
             'FEATURE_SET',
             'SEED_FILE',
             'KEEP_SEEDS_CURRENT',
