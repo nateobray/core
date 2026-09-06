@@ -3,12 +3,14 @@
     "description": "Simple PHP framework for websites and applications.",
     "license": "MIT",
     "require": {
-        "php": ">=7.0",
+        "php": ">=8.0",
         "psr/http-message": "1.0.*",
         "psr/log": "^1.1",
         "psr/container": "^1.0"
     },
     "scripts": {
+        "test": "@php tests/run.php",
+        "test:mysql": "python3 tests/mysql/run-local.py",
         "test:migrations": [
             "php tests/MigrationDetectionTest.php",
             "php tests/ModelTriggersTest.php",

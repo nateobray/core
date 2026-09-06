@@ -84,18 +84,13 @@ Class Invoker implements InvokerInterface
              if ($this->logger) {
                  $this->logger->debug($message, ['exception' => $e]);
              }
-             if(
-                 str_contains($message, 'must be of type ' . GETRequest::class) ||
-                 str_contains($message, 'must be of type ' . POSTRequest::class) ||
-                 str_contains($message, 'must be of type ' . PUTRequest::class) ||
-                 str_contains($message, 'must be of type ' . CONNECTRequest::class) ||
-                 str_contains($message, 'must be of type ' . DELETERequest::class) ||
-                 str_contains($message, 'must be of type ' . HEADRequest::class) ||
-                 str_contains($message, 'must be of type ' . OPTIONSRequest::class) ||
-                 str_contains($message, 'must be of type ' . PATCHRequest::class) ||
-                 str_contains($message, 'must be of type ' . TRACERequest::class)
-             ){
-                 throw new HTTPException(StatusCode::REASONS[StatusCode::METHOD_NOT_ALLOWED], StatusCode::METHOD_NOT_ALLOWED);
+             // Only a binding error at this invocation is a client error. A controller's
+             // own calls and return-type failures must propagate as server errors.
+             $frame = $e->getTrace()[0] ?? [];
+             $argumentErrorPrefix = $reflection_method->getDeclaringClass()->getName()
+                 . '::' . $reflection_method->getName() . '(): Argument #';
+             if (($frame['file'] ?? null) !== __FILE__ || !str_starts_with($message, $argumentErrorPrefix)) {
+                 throw $e;
              }
              $messages = explode(',', $message);
              if(!empty($messages[0])){
@@ -120,25 +115,10 @@ Class Invoker implements InvokerInterface
      */
     private static function getParameterValue($params, $parameter, $request)
     {
-        if (isSet($params[$parameter->getName()])) {
-            if($parameter->getType() instanceof \ReflectionNamedType && $parameter->getType()->getName() == 'bool' && $params[$parameter->getName()] == 'false') return false;
-            if($parameter->getType() instanceof \ReflectionNamedType && $parameter->getType()->getName() == 'bool' && $params[$parameter->getName()] == 'true') return true;
-            if($parameter->getType() instanceof \ReflectionNamedType && ($parameter->getType()->getName() == 'null' || $parameter->getType()->allowsNull()) && ($params[$parameter->getName()] == 'null' || $params[$parameter->getName()] == '')) return null;
-            return $params[$parameter->getName()];
-        }
-
-        if ($parameter->isDefaultValueAvailable() && !$parameter->isDefaultValueConstant()) {
-            return $parameter->getDefaultValue();
-        }
-
-        if ($parameter->isDefaultValueAvailable() && $parameter->isDefaultValueConstant()) {
-            return self::resolveDefaultValueConstant($parameter);
-        }
-
         $type = $parameter->getType();
         if (
             $type instanceof \ReflectionNamedType
-            && (string)$type === GETRequest::class
+            && $type->getName() === GETRequest::class
             && $request instanceof HEADRequest
         ) {
             $previousMethod = $_SERVER['REQUEST_METHOD'] ?? null;
@@ -154,7 +134,7 @@ Class Invoker implements InvokerInterface
             }
         }
 
-        if(in_array((string)$type, [
+        if($type instanceof \ReflectionNamedType && in_array($type->getName(), [
             ServerRequest::class,
             CONNECTRequest::class,
             CONSOLERequest::class,
@@ -166,12 +146,32 @@ Class Invoker implements InvokerInterface
             POSTRequest::class,
             PUTRequest::class,
             TRACERequest::class
-        ]) && !empty($request) ){
+        ], true) && !empty($request)) {
+            $requestClass = $type->getName();
+            if (!$request instanceof $requestClass) {
+                throw new HTTPException(StatusCode::REASONS[StatusCode::METHOD_NOT_ALLOWED], StatusCode::METHOD_NOT_ALLOWED);
+            }
             return $request;
         }
+        if (array_key_exists($parameter->getName(), $params)) {
+            $value = $params[$parameter->getName()];
+            if ($type instanceof \ReflectionNamedType) {
+                if ($type->getName() === 'bool' && $value === 'false') return false;
+                if ($type->getName() === 'bool' && $value === 'true') return true;
+                if ($type->allowsNull() && ($value === 'null' || $value === '')) return null;
+            }
+            return $value;
+        }
 
+        if ($parameter->isDefaultValueAvailable() && !$parameter->isDefaultValueConstant()) {
+            return $parameter->getDefaultValue();
+        }
+
+        if ($parameter->isDefaultValueAvailable() && $parameter->isDefaultValueConstant()) {
+            return self::resolveDefaultValueConstant($parameter);
+        }
         if (!$parameter->isOptional() && !$parameter->isDefaultValueAvailable()) {
-            throw new \Exception("Missing parameter " . $parameter->getName() . ".", 500);
+            throw new HTTPException("Missing parameter " . $parameter->getName() . ".", StatusCode::BAD_REQUEST);
         }
     }
 

@@ -91,16 +91,16 @@ Class Router
     {
         $this->timings = [];
         $this->classLookups = 0;
-
-        // generate our server request
-        $this->ServerRequest = ServerRequest::createRequest($path, $params);
-        $this->timings['request_parsed'] = microtime(true);
-        // generate out path array to use to search
-        $path_array = $this->ServerRequest->getExplodedPath();
+        $this->ServerRequest = null;
+        $this->encoder = null;
+        $this->lastResponse = null;
 
         // attempt to route the request with the set factory, invoker, and container
         $code = StatusCode::OK;
         try {
+            $this->ServerRequest = ServerRequest::createRequest($path, $params);
+            $this->timings['request_parsed'] = microtime(true);
+            $path_array = $this->ServerRequest->getExplodedPath();
             // if we have an empty path_array, default to controller index path
             if( empty($path_array) ) $path_array[] = 'Index';
             // use the factory and invoker to create an object invoke its methods
@@ -113,38 +113,24 @@ Class Router
             } else {
                 $this->setEncoderByClassProperty($obj);
             }
-        } catch (HTTPException $e) {
+            if ($this->encoder === null) {
+                throw new \Exception('Unable to find encoder for this request.');
+            }
+            $encoded = $this->encodeResponse($this->encoder, $obj);
+        } catch (\Throwable $e) {
             $this->timings['controller_found'] = microtime(true);
             // make our object the exception
             $obj = $e;
-            // get the status code from the exception
-            $code = $e->getCode();
+            $code = $e instanceof HTTPException ? $e->getCode() : StatusCode::INTERNAL_SERVER_ERROR;
             // use the error encoder
             $this->encoder = $this->resolveErrorEncoder(true);
             $this->content_type = $this->encoder->getContentType();
-        } catch (\Exception $e) {
-            $this->timings['controller_found'] = microtime(true);
-            // make our object the exception
-            $obj = $e;
-            // since we don't know what kind of exception we're dealing with, go with code 500
-            $code = StatusCode::INTERNAL_SERVER_ERROR;
-            // use the error encoder
-            $this->encoder = $this->resolveErrorEncoder(true);
-            $this->content_type = $this->encoder->getContentType();
+            $encoded = $this->encodeResponse($this->encoder, $obj);
         }
-        
-        // at this point if we don't have an encoder, we're going to throw and exception
-        if ($this->encoder === null) {
-            header('Content-Type: text/html' );
-            throw new \Exception("Unable to find encoder for this request.");
-        }
-        
-        // encode our response with the selected encoder
-        $encoded = $this->encodeResponse($this->encoder, $obj);
         $this->timings['encoded'] = microtime(true);
         
         // output if we're in console
-        if($this->ServerRequest->getMethod() === Method::CONSOLE){
+        if(ServerRequest::isConsoleEnvironment()){
             if(!$repressResponse){
                 $this->encoder->out($encoded);
                 exit();
@@ -158,7 +144,7 @@ Class Router
         }
         
         $normalizedBody = self::normalizeEncodedOutput($encoded);
-        if ($this->ServerRequest->getMethod() === Method::HEAD) {
+        if ($this->ServerRequest !== null && $this->ServerRequest->getMethod() === Method::HEAD) {
             $normalizedBody = '';
         }
         $this->lastResponse = [
@@ -193,7 +179,7 @@ Class Router
      */
     private function searchForController($path_array, $params = [], $direct = false, $method = '', $remaining = array(), $depth = 0): mixed
     {
-        if($this->ServerRequest->getMethod() === Method::CONSOLE) $direct = true;
+        if(ServerRequest::isConsoleEnvironment()) $direct = true;
         // prevent the possibility of an infinite loop (this should not happen, but is here just in case)
         if( $depth > 20 ){ throw new \Exception("Depth limit for controller search reached.",500); }
 

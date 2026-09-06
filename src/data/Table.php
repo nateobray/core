@@ -145,11 +145,6 @@ class Table
             }
         }
 
-        // Manually fix order of Users table
-        if(!$this->dryRun && !$this->seedsOnly){
-            $this->fixUserTableOrder();
-        }
-
         // Print concise summary
         Helpers::console("%s", "\nMigration Summary\n\n", "GreenBold");
         Helpers::console(
@@ -308,7 +303,7 @@ class Table
         if(defined($class . '::INDEXES')){
             forEach($class::INDEXES as $index){
                 $normalizedIndex = Index::normalize($index);
-                $keys[] = Index::createSQL($normalizedIndex['columns'], $normalizedIndex['type']);
+                $keys[] = Index::createSQL($normalizedIndex['columns'], $normalizedIndex['type'], $normalizedIndex['name']);
             }
         }
         
@@ -1133,7 +1128,6 @@ class Table
         $sql = "
             SET FOREIGN_KEY_CHECKS = @ORIG_FOREIGN_KEY_CHECKS;
             SET UNIQUE_CHECKS = @ORIG_UNIQUE_CHECKS;
-            SET @ORIG_TIME_ZONE = @@TIME_ZONE;
             SET TIME_ZONE = @ORIG_TIME_ZONE;
             SET SQL_MODE = @ORIG_SQL_MODE;
         ";
@@ -1143,6 +1137,8 @@ class Table
     /**
      * fixUserTableOrder
      * This fixes the order of the columns. Right now based on how this particular table is created the entity_id ends up as the first column. 
+     * Legacy application-specific repair. Call explicitly only for a compatible Users schema;
+     * ordinary model migrations must not change tables outside their selected model scope.
      * 
      * @return void
      */

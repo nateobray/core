@@ -62,7 +62,11 @@ Class Factory implements FactoryInterface
         if( !empty($constructor) ){
             $parameters = $constructor->getParameters();
             forEach( $parameters as $parameter ){
-                if( !$parameter->hasType() ) continue;
+                if ($parameter->isVariadic()) continue;
+                if (!$parameter->hasType()) {
+                    if ($parameter->isDefaultValueAvailable()) continue;
+                    throw new DependencyNotFound("Unable to resolve dependency for {$path}::$" . $parameter->getName(), 501);
+                }
                 $type = $parameter->getType();
                 if(!$type instanceof \ReflectionNamedType){
                     if($parameter->isDefaultValueAvailable()){
@@ -82,13 +86,14 @@ Class Factory implements FactoryInterface
                         501
                     );
                 }
-                if($this->container !== NULL){
-                    $constructor_parameters[] = $this->container->get($type->getName());
+                if($this->container !== NULL && $this->container->has($type->getName())){
+                    $constructor_parameters[$parameter->getName()] = $this->container->get($type->getName());
                 } else {
                     // if we have a factory then make object and return it
                     try{
-                        $constructor_parameters[] = $this->make("\\".$type->getName(), 1, $resolving);
+                        $constructor_parameters[$parameter->getName()] = $this->make("\\".$type->getName(), 1, $resolving);
                     } catch(ClassNotFound $e){
+                        if ($parameter->isDefaultValueAvailable()) continue;
                         throw new DependencyNotFound("Unable to find class dependency. " . $e->getMessage(), 501);
                     }
                 }

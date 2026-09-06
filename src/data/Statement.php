@@ -359,7 +359,10 @@ class Statement
             $sql .= $this->update->toSQL();
             $values = $this->update->values();
         } 
-        if(!empty($this->delete)) $sql .= $this->delete->toSQL();
+        if(!empty($this->delete)) {
+            $sql .= $this->delete->toSQL();
+            $values = $this->delete->values();
+        }
         if(!empty($this->select)) $sql .= $this->select->toSQL($count);
         if(!empty($this->from)) $sql .= $this->from->toSQL();
         if(!empty($this->where)){

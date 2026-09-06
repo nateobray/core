@@ -19,24 +19,10 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
     {
         $method = Method::GET;
         $uri = $path;
-        $forceHttp = defined('OBRAY_FORCE_HTTP_REQUEST') && OBRAY_FORCE_HTTP_REQUEST;
-        if((PHP_SAPI === 'cli' || !empty($_SERVER['argv'])) && !$forceHttp){
-            if(empty($_SERVER['argv'][1])) throw new \Exception("Console dedected, but no path specified.");
-            $uri = $_SERVER['argv'][1];
-            if(!empty($path)) $uri = $path;
-            $method = 'CONSOLE';
-            $this->params = $params;
-            $components = parse_url($uri);
-            if(!empty($components['query'])) parse_str($components['query'], $this->params);
-            $this->cookies = [];
-        } else if(!empty($_REQUEST['TENANT'])){
-            if(empty($path)){
-                $uri = $_REQUEST['PATH'];
-            } else {
-                $uri = $path;
-            }
-            if(!empty($path)) $uri = $path;
-            $method = 'CONSOLE';
+        if (self::isConsoleEnvironment()) {
+            $uri = $path !== '' ? $path : ($_SERVER['argv'][1] ?? '');
+            if ($uri === '') throw new \InvalidArgumentException('Console request requires a path.');
+            $method = Method::CONSOLE;
             $this->params = $params;
             $components = parse_url($uri);
             if(!empty($components['query'])) parse_str($components['query'], $this->params);
@@ -48,7 +34,7 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
                 $uri = $path;
             }
             
-            $method = $_SERVER['REQUEST_METHOD'] ?? Method::GET;
+            $method = self::getHttpMethod();
             if(empty($params)){
                 $this->params = array_merge($_GET ?? [], $_POST ?? []);
             } else {
@@ -244,17 +230,25 @@ class ServerRequest extends Request implements ServerRequestInterface, JsonSeria
 
     public static function createRequest(string $path = '', array $params = [])
     {
-        try {
-            $forceHttp = defined('OBRAY_FORCE_HTTP_REQUEST') && OBRAY_FORCE_HTTP_REQUEST;
-            if((empty($_SERVER['REQUEST_METHOD']) || !empty($_REQUEST['TENANT'])) && (PHP_SAPI === 'cli' || !empty($_SERVER['argv']) || !empty($_REQUEST['TENANT'])) && !$forceHttp ){
-                $method = 'CONSOLE';
-            } else {
-                $method = $_SERVER['REQUEST_METHOD'];
-            }
-            $requestType = '\\obray\\core\\http\\requests\\' . strtoupper($method) . 'Request';     
-            return new $requestType($path, $params);
-        } catch (\Exception $e){
+        $method = self::isConsoleEnvironment() ? Method::CONSOLE : self::getHttpMethod();
+        $requestType = '\\obray\\core\\http\\requests\\' . $method . 'Request';
+        return new $requestType($path, $params);
+    }
+
+    /** Only the execution environment can grant console privileges, never request data. */
+    public static function isConsoleEnvironment(): bool
+    {
+        return PHP_SAPI === 'cli'
+            && !(defined('OBRAY_FORCE_HTTP_REQUEST') && OBRAY_FORCE_HTTP_REQUEST);
+    }
+
+    private static function getHttpMethod(): string
+    {
+        $method = $_SERVER['REQUEST_METHOD'] ?? Method::GET;
+        if (!in_array($method, [Method::GET, Method::HEAD, Method::POST, Method::PUT,
+            Method::DELETE, Method::CONNECT, Method::OPTIONS, Method::TRACE, Method::PATCH], true)) {
             throw new HTTPException(StatusCode::REASONS[StatusCode::METHOD_NOT_ALLOWED], StatusCode::METHOD_NOT_ALLOWED);
         }
+        return $method;
     }
 }

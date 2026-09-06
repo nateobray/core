@@ -2,7 +2,7 @@
 
 namespace obray\core\exceptions;
 
-Class PermissionDenied extends \Exception
+Class PermissionDenied extends HTTPException
 {
 
 }

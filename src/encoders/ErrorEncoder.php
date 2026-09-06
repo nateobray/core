@@ -48,7 +48,7 @@ Class ErrorEncoder extends JSONEncoder
         }
         
         $obj->runtime = (microtime(true) - $start_time) * 1000;
-        $json = json_encode($obj, JSON_PRETTY_PRINT | JSON_NUMERIC_CHECK);
+        $json = json_encode($obj, JSON_PRETTY_PRINT);
         if ($json === false) {
             $json = json_encode($obj, JSON_PRETTY_PRINT);
         }

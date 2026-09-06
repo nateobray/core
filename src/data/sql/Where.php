@@ -5,9 +5,9 @@ class Where
 {
     private $class;
     private $where;
-    private $values;
+    private array $values = [];
 
-    public function __construct(string $class, $where=[])
+    public function __construct(string $class, $where = [])
     {
         $this->class = $class;
         $this->where = $where;
@@ -15,110 +15,49 @@ class Where
 
     public function toSQL()
     {
-        $sql = '  WHERE ';
-        $columnSQL = [];
         $this->values = [];
-        forEach($this->where as $column => $value){
-            if($value === null){
-                $columnSQL[] = $column . ' IS NULL';
-                continue;
-            }
-            if(is_array($value)){
-                $ors = [];
-                forEach($value as $index => $v){
-                    $ors[] = $this->getExpression($column, $index, $v);
-                }
-                $columnSQL[] = '( ' . implode(' OR ', $ors) . ' )';
-                continue;
-            }
-
-            if($value instanceof AndOp){
-                $ands = [];
-                forEach($value->getValue() as $index => $v){
-                    $ands[] = $this->getExpression($column, $index, $v);
-                }
-                $columnSQL[] = '( ' . implode(' AND ', $ands) . ' )';
-                continue;
-            }
-
-            $columnKey = $column;
-            if(strpos($column, '.') !== false) $columnKey = str_replace('.', '_', $column);
-
-            if($value instanceof Not){
-                if($value->getValue() === null){
-                    $columnSQL[] = $column . ' IS NOT NULL';
-                } else {
-                    $columnSQL[] = $column . ' != :' . $columnKey;
-                    $this->values[':' . $columnKey] = $value->getValue();
-                }
-            } else if ($value instanceof GT){
-                $columnSQL[] = $column . ' > :' . $columnKey;
-                $this->values[':' . $columnKey] = $value->getValue();
-            } else if ($value instanceof GTE){
-                $columnSQL[] = $column . ' >= :' . $columnKey;
-                $this->values[':' . $columnKey] = $value->getValue();
-            } else if ($value instanceof LT){
-                $columnSQL[] = $column . ' < :' . $columnKey;
-                $this->values[':' . $columnKey] = $value->getValue();
-            } else if ($value instanceof LTE){
-                $columnSQL[] = $column . ' <= :' . $columnKey;
-                $this->values[':' . $columnKey] = $value->getValue();
-            } else if($value instanceof LIKE){
-                $columnSQL[] = $column . ' LIKE :' . $columnKey;
-                $this->values[':' . $columnKey] = $value->getValue();
-            } else if($value instanceof RawSQL){
-                $columnSQL[] = $value->getValue();
-            } else {
-                $columnSQL[] = $column . ' = :' . $columnKey;
-                $this->values[':' . $columnKey] = $value; 
-            }
-
+        if ($this->where === []) {
+            throw new \InvalidArgumentException('WHERE requires at least one condition.');
         }
-        $sql = '  WHERE ' . implode("\n    AND ", $columnSQL) . "\n";
-        return $sql;
+        $conditions = [];
+        foreach ($this->where as $column => $value) {
+            $conditions[] = $this->getExpression($column, $value);
+        }
+        return '  WHERE ' . implode("\n    AND ", $conditions) . "\n";
     }
 
-    private function getExpression($column, $index, $v)
+    private function getExpression(string $column, $value): string
     {
-        $columnKey = $column . '_' . $index . '_';
-        if(strpos($column, '.') !== false) $columnKey = str_replace('.', '', strstr($column, '.')) . '_' . $index . '_';
-        if($v instanceof AndOp){
-            $ands = [];
-            forEach($v->getValue() as $index => $val){
-                $ands[] = $this->getExpression($column, $index, $val);
+        if (is_array($value) || $value instanceof AndOp) {
+            $isAnd = $value instanceof AndOp;
+            $members = $isAnd ? $value->getValue() : $value;
+            if ($members === []) {
+                if ($isAnd) throw new \InvalidArgumentException('AND requires at least one condition.');
+                return '(1 = 0)';
             }
-            return '( ' . implode(' AND ', $ands) . ' )';
+            $expressions = [];
+            foreach ($members as $member) {
+                $expressions[] = $this->getExpression($column, $member);
+            }
+            return '( ' . implode($isAnd ? ' AND ' : ' OR ', $expressions) . ' )';
         }
-        if($v instanceof Not){
-            $this->values[':' . $columnKey] = $v->getValue();
-            if($v->getValue() === null){
-                return $column . ' != :' . $columnKey;
-            } else {
-                return $column . ' IS NOT :' . $columnKey;
-            }
-        } else if ($v instanceof GT){
-            $this->values[':' . $columnKey] = $v->getValue();
-            return $column . ' > :' . $columnKey;
-        } else if ($v instanceof GTE){
-            $this->values[':' . $columnKey] = $v->getValue();
-            return $column . ' >= :' . $columnKey;
-        } else if ($v instanceof LT){
-            $this->values[':' . $columnKey] = $v->getValue();
-            return $column . ' < :' . $columnKey;
-        } else if ($v instanceof LTE){
-            $this->values[':' . $columnKey] = $v->getValue();
-            return $column . ' <= :' . $columnKey;
-        } else if ($v instanceof Like){
-            $this->values[':' . $columnKey] = $v->getValue();
-            return $column . ' LIKE :' . $columnKey;
-        } else {
-            if($v === null){
-                return $column . ' IS NULL';
-            } else {
-                $this->values[':' . $columnKey] = $v;
-                return $column . ' = :' . $columnKey;
+        if ($value instanceof RawSQL) return $value->getValue();
+        if ($value === null) return $column . ' IS NULL';
+        if ($value instanceof Not && $value->getValue() === null) return $column . ' IS NOT NULL';
+
+        $operator = '=';
+        foreach ([Not::class => '!=', GT::class => '>', GTE::class => '>=',
+            LT::class => '<', LTE::class => '<=', Like::class => 'LIKE'] as $type => $comparison) {
+            if ($value instanceof $type) {
+                $operator = $comparison;
+                $value = $value->getValue();
+                break;
             }
         }
+        // Each occurrence owns a binding, independent of aliases, column names and group depth.
+        $placeholder = ':where_' . count($this->values);
+        $this->values[$placeholder] = $value;
+        return $column . ' ' . $operator . ' ' . $placeholder;
     }
 
     public function values(): array

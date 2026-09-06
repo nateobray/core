@@ -93,6 +93,9 @@ class FakeDBConn extends DBConn
 
     public function run($sql, $bind = [], $fetchStyle = null)
     {
+        if (stripos($sql, 'SELECT @@SESSION.sql_mode') === 0) {
+            return [[['sql_mode' => 'STRICT_TRANS_TABLES']]];
+        }
         $sqlTrim = ltrim($sql);
         if (stripos($sqlTrim, 'insert into') === 0) {
             return $this->handleInsert($sqlTrim, $bind);
@@ -270,6 +273,9 @@ class FakeDBConn extends DBConn
 
     private function parseConditions(string $wherePart, array $bind, ?string $defaultAlias = null): array
     {
+        foreach ($bind as $key => $value) {
+            $bind[':' . ltrim($key, ':')] = $value;
+        }
         $conditions = [];
         $parts = preg_split('/\s+AND\s+/i', trim($wherePart));
         foreach ($parts as $part) {

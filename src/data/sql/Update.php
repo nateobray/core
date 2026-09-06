@@ -36,12 +36,14 @@ class Update
     {
         $table = Table::getTable($this->instance::class);
         $columns = Table::getColumns($this->instance::class);
+        $this->values = [];
 
         $columnSQL = []; $whereSQL = [];
         forEach($columns as $column){
             if(strpos($column->propertyClass, 'PrimaryKey') ){
-                if($this->instance->{$column->name}->empty() && $this->instance->{$column->name}->getValue() !== 0) continue;
-                $whereSQL[] = "`" . $column->propertyName . "` = " . $this->instance->{$column->name}->insertSQL($this->DBConn);
+                $key = 'pk_' . $column->propertyName;
+                $this->values[$key] = WriteKey::value($this->instance->{$column->name}->getValue());
+                $whereSQL[] = "`" . $column->propertyName . "` = :" . $key;
                 continue;
             }
             if(strpos($column->propertyClass, 'DateTimeCreated')) continue;
