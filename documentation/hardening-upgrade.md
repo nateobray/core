@@ -6,6 +6,13 @@ their runtime.
 
 ## Changes that may affect applications
 
+- SQL loading failures now carry useful messages and preserve the underlying PDO
+  exception through `getPrevious()`. `SqlStringFailedToLoad`, `SqlArrayFailedToLoad`,
+  `SqlFileNotFound`, and `SqlFileFailedToLoad` extend `SqlFailedToLoad`, so the general
+  catch remains available alongside specific catches. Invalid arrays and empty
+  input fail before connecting. Missing `.sql` paths report a file error rather
+  than being submitted to PDO as SQL. A failed reload clears the prior query.
+  Execution-time PDO exceptions retain their existing type and diagnostics.
 - HTTP request parameters no longer select console execution. Any HTTP worker or
   internal bridge that relied on `TENANT`/`PATH` granting console privileges must
   use an authenticated and authorized HTTP endpoint, or invoke the real CLI.

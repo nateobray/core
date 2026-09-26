@@ -127,6 +127,17 @@ and `RawSQL` are developer-authored SQL; allowlist any user-selected identifiers
 `DBConn::run()` returns an array of result sets. The higher-level query builder
 hydrates models; `firstOrNull()` returns a model or `null`.
 
+SQL loading accepts SQL strings, existing file paths (including bare `.sql`
+filenames), or `['sql' => $sql]`. Invalid input, missing files, and unreadable or
+empty files produce specific exceptions that extend `SqlFailedToLoad`. Recognized
+missing file paths are never retried as SQL. When loading a string fails during
+PDO preparation, `getPrevious()` preserves the original `PDOException` and its
+`errorInfo` for server-side diagnostics. The outer message excludes SQL and driver
+details because error encoders may display it to clients. With PDO silent mode,
+failed preparation is converted to an exception with the driver's `errorInfo`.
+Execution-time PDO exceptions still propagate unchanged; files and SQL arrays are
+prepared at execution, and emulated prepares may defer syntax checks until then.
+
 `Table` manages model migrations and seeds. Preview changes with `dry_run: true`
 and scope them with the `tables` filter. MySQL DDL is not transactional. See
 [model trigger migrations](documentation/model-triggers.md) for trigger conflict

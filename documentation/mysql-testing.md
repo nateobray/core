@@ -25,6 +25,8 @@ The runner:
 
 The suite covers:
 
+- SQL loading diagnostics with native and emulated prepares, PDO exception and
+  silent modes, and preserved SQLSTATE/driver codes for syntax and missing-column errors.
 - Dry-run and filtered model migrations, named indexes, foreign keys, and restored
   connection settings.
 - CSV seeds with ID zero and leading-zero strings; repeated migrations and mutable

@@ -60,6 +60,31 @@ $admin->exec("CREATE DATABASE `$database` CHARACTER SET utf8mb4");
 $db = new DBConn('127.0.0.1', 'root', $password, $database, $port, 'InnoDB', 'utf8mb4');
 try {
     $querier = new Querier($db);
+    // Loading errors must preserve the driver's cause; emulated prepares defer
+    // syntax checks until execution and must still expose the original PDO error.
+    $connection = $db->getConnection();
+    $emulate = $connection->getAttribute(PDO::ATTR_EMULATE_PREPARES);
+    $errorMode = $connection->getAttribute(PDO::ATTR_ERRMODE);
+    try {
+        $connection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+        foreach ([PDO::ERRMODE_EXCEPTION, PDO::ERRMODE_SILENT] as $mode) {
+            $connection->setAttribute(PDO::ATTR_ERRMODE, $mode);
+            $error = expect_mysql_failure(fn() => $db->run('SELEC 1'), \obray\data\exceptions\SqlFailedToLoad::class, 'Native prepare failure must have a useful load exception.');
+            $cause = $error->getPrevious();
+            check_mysql($cause instanceof PDOException && ($cause->errorInfo[0] ?? null) === '42000'
+                && ($cause->errorInfo[1] ?? null) === 1064, 'Loading must preserve MySQL SQLSTATE and driver code.');
+            check_mysql($error->getMessage() !== '' && !str_contains($error->getMessage(), 'SELEC'), 'Load messages must be useful without exposing SQL.');
+        }
+        $connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $error = expect_mysql_failure(fn() => $db->run('SELECT absent_column FROM information_schema.TABLES'), \obray\data\exceptions\SqlFailedToLoad::class, 'Missing-column errors must preserve their cause.');
+        check_mysql(($error->getPrevious()->errorInfo[0] ?? null) === '42S22', 'Missing-column SQLSTATE must survive loading.');
+        $connection->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);
+        $error = expect_mysql_failure(fn() => $db->run('SELEC 1'), PDOException::class, 'Execution errors must still propagate with emulated prepares.');
+        check_mysql(($error->errorInfo[0] ?? null) === '42000', 'Execution must retain MySQL diagnostics.');
+    } finally {
+        $connection->setAttribute(PDO::ATTR_EMULATE_PREPARES, $emulate);
+        $connection->setAttribute(PDO::ATTR_ERRMODE, $errorMode);
+    }
     $originalSession = session_mysql($db);
     migrate_mysql($db, $database, true);
     check_mysql($admin->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = '$database'")->fetchColumn() == 0, 'Dry-run migration must create no tables.');

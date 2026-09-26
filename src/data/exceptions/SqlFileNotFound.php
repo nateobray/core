@@ -2,7 +2,7 @@
 
 namespace obray\data\exceptions;
 
-class SqlFileNotFound extends \Exception
+class SqlFileNotFound extends SqlFailedToLoad
 {
 
 }

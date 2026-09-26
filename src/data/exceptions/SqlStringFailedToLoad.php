@@ -2,7 +2,7 @@
 
 namespace obray\data\exceptions;
 
-class SqlStringFailedToLoad extends \Exception
+class SqlStringFailedToLoad extends SqlFailedToLoad
 {
 
 }

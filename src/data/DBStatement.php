@@ -13,7 +13,7 @@ class DBStatement
     const VALID_SORT_DIRECTIONS = ['ASC', 'DESC'];
 
     protected $DBConn;
-    protected $queryStrings;
+    protected $queryStrings = [];
     protected $queryParams = [];
     protected $pdoStatements = [];
     protected $results = [];
@@ -25,32 +25,36 @@ class DBStatement
 
     public function loadSql($sql)
     {
-        if ($this->isFilePath($sql)) {
-            try {
+        // A failed reload must not leave the preceding query executable.
+        $this->queryStrings = [];
+        $this->pdoStatements = [];
+        $this->results = [];
+        try {
+            if (is_array($sql)) {
+                $this->loadSqlArray($sql);
+            } elseif (!is_string($sql)) {
+                throw new SqlFailedToLoad('SQL input must be a string, a file path, or an array containing a SQL string.');
+            } elseif ($this->isFilePath($sql)) {
                 $this->loadSqlFile($sql);
-                return $this;
-            } catch (SqlFileNotFound $e) {
+            } else {
+                $this->loadSqlString($sql);
             }
+        } catch (\Throwable $e) {
+            $this->queryStrings = [];
+            throw $e;
         }
-
-        try {
-            $this->loadSqlArray($sql);
-            return $this;
-        } catch (SqlArrayFailedToLoad $e) {
-        }
-
-        try {
-            $this->loadSqlString($sql);
-            return $this;
-        } catch (SqlStringFailedToLoad $e) {
-        }
-
-        throw new SqlFailedToLoad();
+        return $this;
     }
 
     protected function isFilePath($input)
     {
-        return is_string($input) && strlen($input) > 0 && strpos($input, '/') !== false && is_file($input);
+        if (!is_string($input) || $input === '' || strpos($input, "\0") !== false) return false;
+        if (is_file($input)) return true;
+
+        // Recognize missing paths too, without treating SQL comments, division,
+        // or quoted SQL values as filenames. Bare *.sql names are supported.
+        return (bool)preg_match('~^(?:/(?![*/])|\.{1,2}[/\\\\]|[A-Za-z]:[/\\\\])[^\r\n\'";]*$~D', $input)
+            || (bool)preg_match('~^[^\s\'";]+\.sql$~iD', $input);
     }
 
     public function bindValues($params)
@@ -85,7 +89,11 @@ class DBStatement
         $pdoConnection = $this->DBConn->getConnection();
         $this->pdoStatements = [];
         foreach ($this->queryStrings as $index => $queryString) {
-            $this->pdoStatements[$index] = $pdoConnection->prepare($queryString);
+            $statement = $pdoConnection->prepare($queryString);
+            if ($statement === false) {
+                throw new SqlFailedToLoad('Unable to prepare SQL statement.', 0, $this->prepareError($pdoConnection));
+            }
+            $this->pdoStatements[$index] = $statement;
 
             // If first query, bind parameters
             if ($index === 0) {
@@ -102,6 +110,9 @@ class DBStatement
 
     public function execute()
     {
+        if (empty($this->queryStrings)) {
+            throw new SqlFailedToLoad('No SQL statements have been loaded.');
+        }
         $this->prepare();
         if( empty($this->pdoStatements) ) {
             throw new \Exception('No PDOStatements have been prepared. Failed to execute');
@@ -130,50 +141,70 @@ class DBStatement
 
     protected function loadSqlString($sqlString)
     {
-        // Attempt to load SQL from string
+        if (!is_string($sqlString) || trim($sqlString, " \t\n\r\0\x0B;") === '') {
+            throw new SqlStringFailedToLoad('SQL string must not be empty.');
+        }
+        if (strpos($sqlString, "\0") !== false) {
+            throw new SqlStringFailedToLoad('SQL string must not contain NUL bytes.');
+        }
         try {
-            // Check if string is prepare-able
             $dbh = $this->DBConn->getConnection();
             $pdoStatement = $dbh->prepare($sqlString);
-            if ($pdoStatement !== false) {
-                $this->parseQueries($sqlString);
-                return;
+            if ($pdoStatement === false) {
+                throw new SqlStringFailedToLoad('Unable to prepare SQL string.', 0, $this->prepareError($dbh));
             }
         } catch (\PDOException $e) {
+            // Keep SQLSTATE, errorInfo and the original message for server-side diagnostics.
+            // ErrorEncoder exposes our message, so do not copy driver/SQL details into it.
+            throw new SqlStringFailedToLoad('Unable to load SQL string from the database.', 0, $e);
         }
-        throw new SqlStringFailedToLoad();
+        $this->parseQueries($sqlString);
+    }
+
+    private function prepareError(\PDO $connection): \PDOException
+    {
+        // ERRMODE_SILENT returns false instead of throwing. Preserve the same
+        // driver diagnostics without changing the connection's error mode.
+        $info = $connection->errorInfo();
+        $error = new \PDOException('SQLSTATE[' . ($info[0] ?? 'HY000') . ']: ' . ($info[2] ?? 'SQL preparation failed.'));
+        $error->errorInfo = $info;
+        return $error;
     }
 
     protected function loadSqlArray($sqlArray)
     {
-        // Attempt to load SQL from array
-        try {
-            if (is_array($sqlArray) && !empty($sqlArray['sql'])) {
-                $this->parseQueries($sqlArray['sql']);
-                return;
-            }
-        } catch (\Exception $e) {
+        if (!is_array($sqlArray) || !isset($sqlArray['sql']) || !is_string($sqlArray['sql'])
+            || trim($sqlArray['sql'], " \t\n\r\0\x0B;") === '' || strpos($sqlArray['sql'], "\0") !== false) {
+            throw new SqlArrayFailedToLoad('SQL array must contain a non-empty SQL string under the "sql" key.');
         }
-        throw new SqlArrayFailedToLoad();
+        $this->parseQueries($sqlArray['sql']);
     }
 
     protected function loadSqlFile($file)
     {
-        $file = preg_replace('#/+#', '/', $file);
-
         // Check if file exists before attempting to resolve realpath
         if (!is_file($file)) {
-            throw new SqlFileNotFound();
+            throw new SqlFileNotFound('SQL file was not found.');
         }
 
         if (($path = realpath($file)) === false) {
-            throw new SqlFileNotFound();
+            throw new SqlFileNotFound('SQL file path could not be resolved.');
         }
 
-        $contents = file_get_contents($path);
-        
-        if ($contents === false) {
-            throw new SqlFileFailedToLoad();
+        // Convert read warnings (including a file disappearing after realpath)
+        // into an exception, while preserving the caller's error handler.
+        set_error_handler(static function ($severity, $message, $file, $line) {
+            throw new \ErrorException($message, 0, $severity, $file, $line);
+        }, E_WARNING);
+        try {
+            $contents = file_get_contents($path);
+        } catch (\ErrorException $e) {
+            throw new SqlFileFailedToLoad('Unable to read SQL file.', 0, $e);
+        } finally {
+            restore_error_handler();
+        }
+        if ($contents === false || trim($contents, " \t\n\r\0\x0B;") === '' || strpos($contents, "\0") !== false) {
+            throw new SqlFileFailedToLoad('SQL file must contain a non-empty SQL string.');
         }
 
         $this->parseQueries($contents);
