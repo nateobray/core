@@ -56,6 +56,8 @@ class FakeDBConn extends DBConn
     private array $autoIncrement = [];
     private int $lastInsertId = 0;
     private bool $inTransaction = false;
+    public array $statements = [];
+    public $beforeNextUpdate = null;
 
     public function __construct()
     {
@@ -93,6 +95,7 @@ class FakeDBConn extends DBConn
 
     public function run($sql, $bind = [], $fetchStyle = null)
     {
+        $this->statements[] = $sql;
         if (stripos($sql, 'SELECT @@SESSION.sql_mode') === 0) {
             return [[['sql_mode' => 'STRICT_TRANS_TABLES']]];
         }
@@ -101,6 +104,11 @@ class FakeDBConn extends DBConn
             return $this->handleInsert($sqlTrim, $bind);
         }
         if (stripos($sqlTrim, 'update') === 0) {
+            if ($this->beforeNextUpdate !== null) {
+                $callback = $this->beforeNextUpdate;
+                $this->beforeNextUpdate = null;
+                $callback($this);
+            }
             return $this->handleUpdate($sqlTrim, $bind);
         }
         if (stripos($sqlTrim, 'select') === 0) {
@@ -499,6 +507,116 @@ assert_true($preservedSeedConstant->status_name === 'Tenant Override Active', 'I
 assert_true($insertedInsertOnlySeedConstant instanceof SeedConstantInsertOnlyStatus, 'Insert-only constant seeding should still insert missing seed constants.');
 assert_true($insertedInsertOnlySeedConstant->status_name === 'Inactive', 'Insert-only constant seed insert value mismatch.');
 assert_true($seedConstantInsertOnlyQuerier->select(SeedConstantInsertOnlyStatus::class)->count() === 2, 'Insert-only constant seeding should not treat metadata constants as seed rows.');
+
+
+function seed_summary(Table $table): array
+{
+    $property = new \ReflectionProperty(Table::class, 'migrationSummary');
+    $property->setAccessible(true);
+    return $property->getValue($table);
+}
+
+// Selective seed preservation: defaults update while tenant overrides stay untouched.
+$protectedClass = \tests\fixtures\SeedConstantProtectedStatus::class;
+$protectedConn = new FakeDBConn();
+$protectedConn->seed($protectedClass, [
+    ['status_id' => 1, 'status_name' => 'Old Default', 'status_override' => 'Production Hold'],
+]);
+$protectedTable = new Table($protectedConn);
+invoke_private_method($protectedTable, 'seedConstants', [$protectedClass, Table::getColumns($protectedClass), false]);
+$protectedQuerier = new Querier($protectedConn);
+$protectedRow = $protectedQuerier->select($protectedClass)->where(['status_id' => 1])->limit(1)->run();
+assert_true($protectedRow->status_name === 'Active', 'Unprotected default names should still update.');
+assert_true($protectedRow->status_override === 'Production Hold', 'Constant seeding must preserve explicit overrides.');
+assert_true($protectedQuerier->select($protectedClass)->count() === 2, 'Preservation metadata must not become a seed row.');
+$missingRow = $protectedQuerier->select($protectedClass)->where(['status_id' => 2])->limit(1)->run();
+assert_true($missingRow->status_name === 'Inactive', 'Protection must not prevent missing defaults from being inserted.');
+$summaryBefore = seed_summary($protectedTable);
+invoke_private_method($protectedTable, 'seedConstants', [$protectedClass, Table::getColumns($protectedClass), false]);
+assert_true($summaryBefore === seed_summary($protectedTable), 'Constant seeding with preserved overrides must be idempotent.');
+foreach ($protectedConn->statements as $sql) {
+    if (stripos(ltrim($sql), 'UPDATE') === 0) {
+        assert_true(strpos($sql, 'status_override') === false, 'Protected fields must be absent from UPDATE SQL.');
+    }
+}
+
+// Copying an old override into an UPDATE would lose this intervening administrator edit.
+$raceConn = new FakeDBConn();
+$raceConn->seed($protectedClass, [
+    ['status_id' => 1, 'status_name' => 'Old Default', 'status_override' => 'Old Override'],
+]);
+$raceConn->beforeNextUpdate = function (FakeDBConn $conn) use ($protectedClass): void {
+    $q = new Querier($conn);
+    $row = $q->select($protectedClass)->where(['status_id' => 1])->limit(1)->run();
+    $row->status_override = 'Newer Administrator Edit';
+    $q->update($row)->run();
+};
+invoke_private_method(new Table($raceConn), 'seedConstants', [$protectedClass, Table::getColumns($protectedClass), false]);
+$raceRow = (new Querier($raceConn))->select($protectedClass)->where(['status_id' => 1])->limit(1)->run();
+assert_true($raceRow->status_name === 'Active' && $raceRow->status_override === 'Newer Administrator Edit', 'Seed updates must not overwrite a concurrent protected-field edit.');
+
+// A two-column catalog can instead opt to preserve the display name itself.
+$nameClass = \tests\fixtures\SeedConstantProtectedName::class;
+$nameConn = new FakeDBConn();
+$nameConn->seed($nameClass, [['status_id' => 1, 'status_name' => 'Production Hold']]);
+$nameTable = new Table($nameConn);
+invoke_private_method($nameTable, 'seedConstants', [$nameClass, Table::getColumns($nameClass), false]);
+assert_true((new Querier($nameConn))->select($nameClass)->where(['status_id' => 1])->limit(1)->run()->status_name === 'Production Hold', 'Protected names must be retained.');
+assert_true(seed_summary($nameTable)['seeds_updated'] === 0, 'Protected-only differences must not issue updates.');
+
+$fileClass = \tests\fixtures\SeedFileProtectedSetting::class;
+$fileConn = new FakeDBConn();
+$fileConn->seed($fileClass, [
+    ['setting_id' => 99, 'setting_key' => 'task_filter', 'setting_value' => 'old_default', 'setting_override' => 'Tenant Choice'],
+]);
+$fileTable = new Table($fileConn);
+invoke_private_method($fileTable, 'seedFile', [$fileClass, false]);
+$fileQuerier = new Querier($fileConn);
+$fileRow = $fileQuerier->select($fileClass)->where(['setting_id' => 99])->limit(1)->run();
+assert_true($fileRow->setting_value === 'seed_default' && $fileRow->setting_override === 'Tenant Choice', 'CSV matching must update defaults and retain overrides on the existing ID.');
+assert_true($fileQuerier->select($fileClass)->count() === 2, 'CSV protection must still insert missing rows.');
+$summaryBefore = seed_summary($fileTable);
+invoke_private_method($fileTable, 'seedFile', [$fileClass, false]);
+assert_true($summaryBefore === seed_summary($fileTable), 'CSV protection must be idempotent.');
+foreach ($fileConn->statements as $sql) {
+    if (stripos(ltrim($sql), 'UPDATE') === 0) {
+        assert_true(strpos($sql, 'setting_override') === false, 'CSV updates must omit protected columns.');
+    }
+}
+
+// Null overrides are intentional values too. Whole-row insert-only policy still wins.
+$nullConn = new FakeDBConn();
+$nullConn->seed($protectedClass, [['status_id' => 1, 'status_name' => 'Old Default', 'status_override' => null]]);
+invoke_private_method(new Table($nullConn), 'seedConstants', [$protectedClass, Table::getColumns($protectedClass), false]);
+assert_true((new Querier($nullConn))->select($protectedClass)->where(['status_id' => 1])->limit(1)->run()->status_override === null, 'Null overrides must remain null.');
+$insertOnlyModel = new class extends \tests\fixtures\SeedConstantProtectedStatus {
+    public const SEED_INSERT_ONLY = true;
+};
+$insertOnlyClass = get_class($insertOnlyModel);
+$insertOnlyConn = new FakeDBConn();
+$insertOnlyConn->seed($insertOnlyClass, [['status_id' => 1, 'status_name' => 'Old Default', 'status_override' => 'Tenant Choice']]);
+invoke_private_method(new Table($insertOnlyConn), 'seedConstants', [$insertOnlyClass, Table::getColumns($insertOnlyClass), false]);
+assert_true((new Querier($insertOnlyConn))->select($insertOnlyClass)->where(['status_id' => 1])->limit(1)->run()->status_name === 'Old Default', 'Insert-only must continue to preserve the entire existing row.');
+
+// Invalid policies fail before any database calls, for constant and CSV seeds.
+$invalidModels = [
+    new class extends \tests\fixtures\SeedConstantMutableStatus { public const SEED_PRESERVE_COLUMNS = 'status_name'; },
+    new class extends \tests\fixtures\SeedConstantMutableStatus { public const SEED_PRESERVE_COLUMNS = ['unknown_column']; },
+    new class extends \tests\fixtures\SeedConstantMutableStatus { public const SEED_PRESERVE_COLUMNS = ['status_id']; },
+    new class extends \tests\fixtures\SeedFileMutableSetting { public const SEED_PRESERVE_COLUMNS = ['alias' => 'setting_value']; },
+];
+foreach ($invalidModels as $model) {
+    $class = get_class($model);
+    $invalidConn = new FakeDBConn();
+    try {
+        $table = new Table($invalidConn);
+        if (defined($class . '::SEED_FILE')) invoke_private_method($table, 'seedFile', [$class, false]);
+        else invoke_private_method($table, 'seedConstants', [$class, Table::getColumns($class), false]);
+        throw new \RuntimeException('Invalid seed protection was accepted.');
+    } catch (\InvalidArgumentException $e) {
+        assert_true($invalidConn->statements === [], 'Invalid policies must fail before database work.');
+    }
+}
 
 echo "Data layer regression tests passed\n";
 

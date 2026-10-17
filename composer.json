@@ -9,6 +9,7 @@
         "psr/container": "^1.0"
     },
     "scripts": {
+        "test:seeds": "php tests/DataLayerTest.php",
         "test": "@php tests/run.php",
         "test:mysql": "python3 tests/mysql/run-local.py",
         "test:migrations": [
