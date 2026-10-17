@@ -187,6 +187,7 @@ try {
     $second = migrate_mysql($db, $database, true);
     check_mysql(!str_contains($second, 'ALTER TABLE') && !str_contains($second, 'CREATE TRIGGER'), 'A repeated dry run must detect an up-to-date schema.');
     check_mysql(rows_mysql($db) === $afterMigration && session_mysql($db) === $originalSession, 'Repeated migrations must preserve application rows and connection settings.');
+    require __DIR__ . '/BatchCollections.php';
 } finally {
     if ($db->inTransaction()) $db->rollback();
     $db->disconnect();

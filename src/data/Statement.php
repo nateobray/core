@@ -40,6 +40,7 @@ class Statement
     private \obray\data\sql\OrderBy $orderBy;
     
     private bool $returnSingleRow = false;
+    private array $many = [];
 
     /**
      * __construct
@@ -124,6 +125,28 @@ class Statement
         $this->class = $class;
         $this->select = new Select($class, $sql);
         $this->from = new From($class);
+        $this->many = [];
+        return $this;
+    }
+
+    /** Load a root model's collection separately, keyed by its primary key. */
+    public function withMany(string $name, string $class, string $foreignKey, array $where = [], array $orderBy = [], int $batchSize = 500): Statement
+    {
+        if ($this->action !== 'selecting' || !isset($this->select)) {
+            throw new \LogicException('withMany requires a select statement.');
+        }
+        if (!preg_match('/^cust_[A-Za-z0-9_]+$/D', $name) || property_exists($this->class, $name) || isset($this->many[$name])) {
+            throw new \InvalidArgumentException('A collection requires a unique cust_ alias.');
+        }
+        if (!is_subclass_of($class, DBO::class) || $batchSize < 1 || $batchSize > 1000) {
+            throw new \InvalidArgumentException('Invalid collection model or batch size (1-1000).');
+        }
+        $columns = array_column(Table::getColumns($class), 'propertyName');
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $foreignKey) || !in_array($foreignKey, $columns, true)) {
+            throw new \InvalidArgumentException('Collection foreign key must be a model column.');
+        }
+        $class::getPrimaryKey();
+        $this->many[$name] = compact('class', 'foreignKey', 'where', 'orderBy', 'batchSize');
         return $this;
     }
 
@@ -344,6 +367,16 @@ class Statement
 
     public function run(string $sql = '', array $values = [], $count = false): mixed
     {
+        if ($this->many !== []) {
+            if ($this->action !== 'selecting' || $sql !== '') {
+                throw new \LogicException('withMany only supports model selects.');
+            }
+            foreach ($this->from->getJoinMap() as $join) {
+                if (isset($this->many[$join->getName()])) {
+                    throw new \InvalidArgumentException('Collection alias conflicts with a join.');
+                }
+            }
+        }
         // check what action we are performing and call the onBefore lifecycle method
         if($this->action === 'updating') {
             if (method_exists($this->update->getInstance(), 'isDirty') && !$this->update->getInstance()->isDirty()) {
@@ -393,6 +426,9 @@ class Statement
         if ($this->action === 'selecting') {
             $results = \obray\core\PerformanceProfile::measure('hydration', fn() =>
                 (new ResultHydrator())->hydrate($data[0], $this->class, $this->from->getJoins()));
+            if ($results !== [] && $this->many !== []) {
+                (new CollectionLoader($this->conn))->load($results, $this->many);
+            }
         }
 
         $this->sql = '';

@@ -127,6 +127,45 @@ and `RawSQL` are developer-authored SQL; allowlist any user-selected identifiers
 `DBConn::run()` returns an array of result sets. The higher-level query builder
 hydrates models; `firstOrNull()` returns a model or `null`.
 
+### Loading independent collections
+
+Use opt-in `withMany()` when joining several collections would multiply SQL rows
+(for example, 20 items and 10 documents produce 200 rows per parent):
+
+```php
+$orders = $querier->select(Order::class)
+    ->where(['orders.tenant_id' => $tenantId])
+    ->orderBy(['orders.order_id ASC'])
+    ->limit(50)
+    ->withMany('cust_items', OrderItem::class, 'order_id', ['visible' => 1])
+    ->withMany('cust_documents', OrderDocument::class, 'order_id')
+    ->run();
+```
+
+Each child foreign key refers to the root model's primary key and should have a
+database index and a compatible scalar type. Collections attach under unique
+`cust_` aliases as model arrays; missing children produce `[]`. Parent filtering,
+ordering, and pagination run first. Child filters restrict the collection without
+removing parents. Filters and ordering use child table names, not collection aliases.
+The optional fifth argument is an ordering array (default: child primary key ASC);
+the sixth is a batch size of 1–1000 parent keys (default: 500).
+
+For each collection, the loader executes one child query per batch of distinct
+returned parent keys on the same connection. Empty results and `count()` skip
+child queries. `first()` and `firstOrNull()` attach collections to the returned
+model. Existing joins retain their behavior, including their pagination semantics.
+Use explicit parent and child permission/tenant filters as required by the
+application; this API does not infer access rules.
+
+This initial API supports direct collections, without nested loading, composite
+keys, or per-parent child limits. Multiple queries can observe concurrent changes;
+use a transaction with suitable isolation when a consistent snapshot is required.
+The loader neither starts nor commits transactions. Batch size bounds parent keys,
+not the total number of children. Extra database round trips may outweigh savings
+for small collections, so measure representative workloads before opting in.
+`composer test:mysql` includes an isolated joined-versus-batched benchmark and
+checks exact result equality, pagination, filters, and transaction behavior.
+
 SQL loading accepts SQL strings, existing file paths (including bare `.sql`
 filenames), or `['sql' => $sql]`. Invalid input, missing files, and unreadable or
 empty files produce specific exceptions that extend `SqlFailedToLoad`. Recognized
