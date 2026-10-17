@@ -102,10 +102,11 @@ class DBO implements JsonSerializable
 
     public function __isSet($key)
     {
-        try{
-            $reflection = new \ReflectionClass(static::class);
-            $property = $reflection->getProperty('col_' . $key);
-        } catch (\Exception $e){
+        // Class metadata is immutable; missing relationship checks are normal
+        // during hydration and should not allocate reflection exceptions.
+        static $classes = [];
+        $reflection = $classes[static::class] ??= new \ReflectionClass(static::class);
+        if (!$reflection->hasProperty('col_' . $key)) {
             return isSet($this->{$key});
         }
         return isset($this->{'col_' . $key});
