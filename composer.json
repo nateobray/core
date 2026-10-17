@@ -9,6 +9,7 @@
         "psr/container": "^1.0"
     },
     "scripts": {
+        "test:seeds": "php tests/DataLayerTest.php",
         "test:migrations": [
             "php tests/MigrationDetectionTest.php",
             "php tests/ModelTriggersTest.php",

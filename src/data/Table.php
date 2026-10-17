@@ -861,6 +861,7 @@ class Table
 
         $reflectionClass = new ReflectionClass($class);
         $seedInsertOnly = $this->shouldInsertSeedsOnly($reflectionClass);
+        $seedPreserveColumns = $this->seedPreserveColumns($reflectionClass);
         $SeedFile = $reflectionClass->getConstant('SEED_FILE');
         $seedMatchColumns = [];
         if ($reflectionClass->hasConstant('SEED_MATCH_COLUMNS')) {
@@ -883,11 +884,13 @@ class Table
         try {
             $results = $querier->select($class)->run();
             $resultHashTable = [];
+            $resultRows = [];
             $resultMatchTable = [];
             forEach($results as $result){
                 $row = $result->toArray();
                 $primaryKeyValue = $result->{$result->getPrimaryKey()};
                 $resultHashTable[$primaryKeyValue] = hash('sha256', implode('||||', $row));
+                $resultRows[$primaryKeyValue] = $row;
 
                 $matchKey = $this->buildSeedMatchKey($row, $seedMatchColumns);
                 if ($matchKey !== null) {
@@ -926,8 +929,13 @@ class Table
                         unset($params[$primaryKey]);
                     }
 
-                    $obj = new $class(...$params);
                     $targetPrimaryKeyValue = $params[$primaryKey] ?? null;
+                    foreach ($seedPreserveColumns as $name) {
+                        if (isset($resultRows[$targetPrimaryKeyValue]) && array_key_exists($name, $resultRows[$targetPrimaryKeyValue])) {
+                            $params[$name] = $resultRows[$targetPrimaryKeyValue][$name];
+                        }
+                    }
+                    $obj = new $class(...$params);
                     $targetHash = hash('sha256', implode('||||', $obj->toArray()));
 
                     if($targetPrimaryKeyValue === null || !array_key_exists($targetPrimaryKeyValue, $resultHashTable)){
@@ -939,6 +947,7 @@ class Table
                         $storedPrimaryKeyValue = $obj->{$primaryKey} ?? $insertedId;
                         if ($storedPrimaryKeyValue !== null) {
                             $resultHashTable[$storedPrimaryKeyValue] = hash('sha256', implode('||||', $storedRow));
+                            $resultRows[$storedPrimaryKeyValue] = $storedRow;
                             $storedMatchKey = $this->buildSeedMatchKey($storedRow, $seedMatchColumns);
                             if ($storedMatchKey !== null) {
                                 $resultMatchTable[$storedMatchKey] = $storedPrimaryKeyValue;
@@ -955,8 +964,9 @@ class Table
                         $resultHashTable[$targetPrimaryKeyValue] !== $targetHash
                     ) {
                         $obj->markDirty();
-                        $querier->update($obj)->run();
+                        $querier->update($obj)->preserveUpdateColumns($seedPreserveColumns)->run();
                         $resultHashTable[$targetPrimaryKeyValue] = $targetHash;
+                        $resultRows[$targetPrimaryKeyValue] = $obj->toArray();
                         if ($matchKey !== null) {
                             $resultMatchTable[$matchKey] = $targetPrimaryKeyValue;
                         }
@@ -1009,6 +1019,30 @@ class Table
         return $seedInsertOnly ?? false;
     }
 
+    /** Per-model opt-in protection for fields on existing seed rows; missing rows still receive defaults. */
+    private function seedPreserveColumns(ReflectionClass $reflectionClass): array
+    {
+        if (!$reflectionClass->hasConstant('SEED_PRESERVE_COLUMNS')) {
+            return [];
+        }
+        $columns = $reflectionClass->getConstant('SEED_PRESERVE_COLUMNS');
+        if (!is_array($columns) || array_values($columns) !== $columns) {
+            throw new \InvalidArgumentException('SEED_PRESERVE_COLUMNS must be a list of declared non-primary-key columns.');
+        }
+        $known = [];
+        foreach (self::getColumns($reflectionClass->getName()) as $column) {
+            if (strpos($column->propertyClass, 'PrimaryKey') === false) {
+                $known[$column->propertyName] = true;
+            }
+        }
+        foreach ($columns as $name) {
+            if (!is_string($name) || !isset($known[$name])) {
+                throw new \InvalidArgumentException('SEED_PRESERVE_COLUMNS must contain declared non-primary-key column names.');
+            }
+        }
+        return array_values(array_unique($columns));
+    }
+
     private function isSeedMetadataConstant(string $key): bool
     {
         return in_array($key, [
@@ -1021,7 +1055,8 @@ class Table
             'SEED_FILE',
             'KEEP_SEEDS_CURRENT',
             'SEED_MATCH_COLUMNS',
-            'SEED_INSERT_ONLY'
+            'SEED_INSERT_ONLY',
+            'SEED_PRESERVE_COLUMNS'
         ], true);
     }
 
@@ -1041,13 +1076,17 @@ class Table
         if($printSeed) Helpers::console("%s", 'Seeding Constants from : ' . $class . "\n", "Purple");
         $reflection = new \ReflectionClass($class);
         $seedInsertOnly = $this->shouldInsertSeedsOnly($reflection);
+        $seedPreserveColumns = $this->seedPreserveColumns($reflection);
         $constants = $reflection->getConstants();
         $querier = new Querier($this->DBConn);
 
         $results = $querier->select($class)->run();
         $resultHashTable = [];
+        $resultRows = [];
         forEach($results as $result){
-            $resultHashTable[$result->{$result->getPrimaryKey()}] = hash('sha256', implode('||||', $result->toArray()));
+            $id = $result->{$result->getPrimaryKey()};
+            $resultRows[$id] = $result->toArray();
+            $resultHashTable[$id] = hash('sha256', implode('||||', $resultRows[$id]));
         }
         
         $localInserted = 0; $localUpdated = 0;
@@ -1059,16 +1098,21 @@ class Table
             if(array_key_exists((string)$value, $processedSeedValues)) continue;
             $processedSeedValues[(string)$value] = true;
             $key = ucwords(strtolower(str_replace('_', ' ', $key)));
-            $seedHash = hash('sha256', implode('||||', [
+            $params = [
                 $columns[0]->propertyName => $value,
                 $columns[1]->propertyName => $key
-            ]));
+            ];
+            foreach ($seedPreserveColumns as $name) {
+                if (isset($resultRows[$value]) && array_key_exists($name, $resultRows[$value])) {
+                    $params[$name] = $resultRows[$value][$name];
+                }
+            }
+            $obj = $seedPreserveColumns ? new $class(...$params) : null;
+            // Preserve legacy hashing unless the model opts into field-level protection.
+            $seedHash = hash('sha256', implode('||||', $obj ? $obj->toArray() : $params));
 
             if(!array_key_exists($value, $resultHashTable)){
-                $obj = new $class(...[
-                    $columns[0]->propertyName => $value,
-                    $columns[1]->propertyName => $key
-                ]);
+                $obj = $obj ?? new $class(...$params);
                 Helpers::console("%s", "Adding new seed: " . $key . ": " .$value . "\n", "Purple");
                 $localInserted++;
                 $querier->insert($obj)->run();
@@ -1080,15 +1124,12 @@ class Table
                 $resultHashTable[$value] !== $seedHash
             ) {
                 
-                $obj = new $class(...[
-                    $columns[0]->propertyName => $value,
-                    $columns[1]->propertyName => $key
-                ]);
+                $obj = $obj ?? new $class(...$params);
                 $obj->markDirty();
                 
                 Helpers::console("%s", "Updating seed: " . $key . ": " .$value . "\n", "Purple");
                 $localUpdated++;
-                $querier->update($obj)->run();
+                $querier->update($obj)->preserveUpdateColumns($seedPreserveColumns)->run();
             }
 
             

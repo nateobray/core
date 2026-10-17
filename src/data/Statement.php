@@ -84,6 +84,16 @@ class Statement
         return $this;
     }
 
+    /** Preserve selected fields without writing stale snapshot values back to the database. */
+    public function preserveUpdateColumns(array $columns): Statement
+    {
+        if ($this->update === null) {
+            throw new \LogicException('preserveUpdateColumns requires an update statement.');
+        }
+        $this->update->preserveColumns($columns);
+        return $this;
+    }
+
     /**
      * delete
      * 

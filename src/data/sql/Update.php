@@ -10,11 +10,28 @@ class Update
     private $instance;
     private DBConn $DBConn;
     private $values = [];
+    private array $preservedColumns = [];
 
     public function __construct(mixed $instance, DBConn $DBConn)
     {
         $this->instance = $instance;
         $this->DBConn = $DBConn;
+    }
+
+    /** Exclude designated columns from this update, including values changed after the seed read. */
+    public function preserveColumns(array $columns): void
+    {
+        $known = [];
+        foreach (Table::getColumns($this->instance::class) as $column) {
+            $known[$column->propertyName] = $column;
+        }
+        foreach ($columns as $name) {
+            if (!is_string($name) || !isset($known[$name])
+                || strpos($known[$name]->propertyClass, 'PrimaryKey') !== false) {
+                throw new \InvalidArgumentException('Preserved update columns must be declared non-primary-key columns.');
+            }
+        }
+        $this->preservedColumns = array_fill_keys($columns, true);
     }
 
     public function getInstance()
@@ -34,6 +51,7 @@ class Update
 
     public function toSQL()
     {
+        $this->values = [];
         $table = Table::getTable($this->instance::class);
         $columns = Table::getColumns($this->instance::class);
 
@@ -44,10 +62,15 @@ class Update
                 $whereSQL[] = "`" . $column->propertyName . "` = " . $this->instance->{$column->name}->insertSQL($this->DBConn);
                 continue;
             }
+            if (isset($this->preservedColumns[$column->propertyName])) continue;
             if(strpos($column->propertyClass, 'DateTimeCreated')) continue;
             if(strpos($column->propertyClass, 'DateTimeModified')) continue;
             $columnSQL[] = "`" . $column->propertyName . "` = :" . $column->name;
             $this->values[$column->name] = $this->instance->{$column->name}->getValue();
+        }
+
+        if (empty($columnSQL)) {
+            throw new \LogicException('Update has no writable columns.');
         }
 
         $sql = "UPDATE ";
