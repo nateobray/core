@@ -9,8 +9,8 @@ use obray\core\interfaces\EncoderInterface;
 
 Class JSONEncoder implements EncoderInterface
 {
-    private bool $numericCheck = true;
-    public function __construct($numericCheck = true)
+    private bool $numericCheck = false;
+    public function __construct($numericCheck = false)
     {
         $this->numericCheck = $numericCheck;
     }

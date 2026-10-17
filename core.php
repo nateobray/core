@@ -12,7 +12,8 @@ use obray\core\Router;
 // starttime and error handling
 $starttime = microtime(TRUE);
 error_reporting(E_ALL);
-ini_set('display_errors', true);
+$debug = defined('__IS_PRODUCTION__') && __IS_PRODUCTION__ === false;
+ini_set('display_errors', $debug ? '1' : '0');
 
 $loader = require_once "vendor/autoload.php";
 
@@ -22,7 +23,7 @@ $factory = new Factory($container);
 $invoker = new Invoker();
 
 // setup router
-$router = new Router($factory, $invoker, $container, TRUE, $starttime);
+$router = new Router($factory, $invoker, $container, $debug, $starttime);
 $router->addEncoder(JSONEncoder::class,"data","application/json");
 $router->addEncoder(HTMLEncoder::class,"html","text/html");
 $router->addEncoder(ErrorEncoder::class,"error","application/json");
@@ -31,7 +32,7 @@ $router->addEncoder(ConsoleEncoder::class,"console","console");
 
 // route incoming request either through CLI or HTTP request
 if( PHP_SAPI === 'cli' ){
-    $response = $router->route($argv[1],array(),TRUE);
+    $response = $router->route($argv[1] ?? '');
 } else {
     $response = $router->route($_SERVER["REQUEST_URI"]);
 }

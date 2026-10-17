@@ -41,6 +41,7 @@ Class Session
     {
         if ($this->startForWrite()) {
             \session_destroy();
+            $_SESSION = [];
             \session_write_close();
             return;
         }
@@ -59,7 +60,6 @@ Class Session
     {
         if ($this->startForWrite()) {
             $_SESSION[$name] = $value;
-            $this->{$name} = $value;
             \session_write_close();
             return;
         }
