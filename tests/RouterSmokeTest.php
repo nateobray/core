@@ -63,7 +63,12 @@ $router = new Router($factory, $invoker, null, false, microtime(true));
 $router->addEncoder(JSONEncoder::class, 'data', 'application/json');
 $router->addEncoder(ErrorEncoder::class, 'error', 'application/json');
 
+\obray\core\PerformanceProfile::start();
 $response = $router->route('/dummy', [], true);
+$profile = \obray\core\PerformanceProfile::stop();
+if (!isset($profile['encoding_ms']) || isset($profile['sql_ms'])) {
+    throw new \RuntimeException('Profile must capture encoding without inventing database work.');
+}
 $last = $router->getLastResponse();
 
 if (empty($last) || !array_key_exists('body', $last)) {

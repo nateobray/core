@@ -191,10 +191,19 @@ Class DBConn
 
     public function run($sql, $bind = [], $fetchStyle = \PDO::FETCH_OBJ)
     {
-        $DBStatement = $this->beginStatement($sql);
-        $DBStatement->bindValues($bind);
-        $DBStatement->execute();
-        return $DBStatement->fetchResults($fetchStyle);
+        $DBStatement = \obray\core\PerformanceProfile::measure('sql', function () use ($sql, $bind) {
+            $statement = $this->beginStatement($sql);
+            $statement->bindValues($bind);
+            $statement->execute();
+            return $statement;
+        });
+        return \obray\core\PerformanceProfile::measure('fetch', function () use ($DBStatement, $fetchStyle) {
+            $results = $DBStatement->fetchResults($fetchStyle);
+            foreach ($results as $rows) {
+                if (is_array($rows)) \obray\core\PerformanceProfile::add('rows_fetched', count($rows));
+            }
+            return $results;
+        });
     }
 
     public function beginTransaction()

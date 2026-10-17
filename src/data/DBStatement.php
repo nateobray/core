@@ -87,13 +87,14 @@ class DBStatement
     private function prepare()
     {
         $pdoConnection = $this->DBConn->getConnection();
-        $this->pdoStatements = [];
         foreach ($this->queryStrings as $index => $queryString) {
-            $statement = $pdoConnection->prepare($queryString);
+            $statement = $this->pdoStatements[$index] ?? $pdoConnection->prepare($queryString);
             if ($statement === false) {
                 throw new SqlFailedToLoad('Unable to prepare SQL statement.', 0, $this->prepareError($pdoConnection));
             }
             $this->pdoStatements[$index] = $statement;
+
+            $statement->closeCursor();
 
             // If first query, bind parameters
             if ($index === 0) {
@@ -119,6 +120,7 @@ class DBStatement
         }
 
         foreach ($this->pdoStatements as $index => $pdoStatement) {
+            \obray\core\PerformanceProfile::add('statements_executed');
             $this->results[$index] = $pdoStatement->execute();
         }
         return $this->results;
@@ -159,6 +161,11 @@ class DBStatement
             throw new SqlStringFailedToLoad('Unable to load SQL string from the database.', 0, $e);
         }
         $this->parseQueries($sqlString);
+        // Retain the validated single statement for execution. Batches still
+        // prepare their individual queries, rather than executing the batch twice.
+        if (count($this->queryStrings) === 1) {
+            $this->pdoStatements[array_key_first($this->queryStrings)] = $pdoStatement;
+        }
     }
 
     private function prepareError(\PDO $connection): \PDOException

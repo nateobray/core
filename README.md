@@ -148,6 +148,33 @@ stored in a session, read it, modify it, and assign it back to the session prope
 
 ## Tests and upgrades
 
+For opt-in request/job profiling, call `obray\core\PerformanceProfile::start()`
+before routing, and `PerformanceProfile::stop()` in a `finally` block afterward.
+Use `route($path, $params, true)` when collecting timings this way: normal output
+mode exits PHP before the caller can collect the report. Start/stop each request
+separately in persistent workers. Profiling is disabled by default and stores only
+bounded aggregate numbers, never SQL text, parameters, or exception messages.
+
+Reports include `sql_ms` (connection/load/bind/prepare/execute), `fetch_ms`,
+`hydration_ms`, `encoding_ms`, `statements_executed` (attempts), `rows_fetched`,
+`models_hydrated`, and `total_ms`. Absent phases are omitted. SQL/fetch timing
+covers `DBConn::run`; direct PDO calls and custom DBConn overrides are outside its
+coverage. `process_peak_bytes` is PHP's process-wide peak, not an isolated request
+peak. Record reports server-side alongside a non-sensitive route label; compare
+similar requests and their p50/p95 timings before drawing production conclusions.
+
+Joined hydration constructs a model once per primary key within its parent and
+join alias. Separate parents and executions never share mutable models. Custom
+model constructors should not rely on running once per duplicate SQL row.
+
+Reproduce the synthetic hydration benchmarks with
+`php tests/performance/hydration.php`. For a nested receiving graph using BM's
+actual model classes, run `php tests/performance/bm-hydration.php /path/to/bm`.
+Both use generated rows, with no tenant connection or writes. The BM benchmark
+accepts `PERF_CORE_ROOT=/path/to/baseline/core` to compare another checkout and
+reports a response hash to check output equivalence. Timings are descriptive,
+not test thresholds; these benchmarks do not measure full HTTP requests.
+
 ```sh
 composer test
 composer test:migrations

@@ -380,44 +380,10 @@ class Statement
         }
 
         $results = [];
-        // if we are selecting then we need to populate the results
-        foreach ($data[0] as $i => $row) {
-
-            if(empty($row)) continue;
-
-            $objProps = [];
-            forEach($row as $name => $prop){
-                if(strpos($name, $this->class::TABLE.'_') !== false){
-                    $objProps[substr($name, strlen($this->class::TABLE.'_'))] = $prop;
-                }
-            }
-            
-            $result = new ($this->class)(...$objProps);
-            if(empty($results[$result->getPrimaryKeyValue()])){
-                $results[$result->getPrimaryKeyValue()] = $result;
-            }
-            
-            //handle joins
-            forEach($this->from->getJoins() as $class => $join){
-                // populate data from row into our join object
-                $joinResult = $this->populateJoin($row, $join);
-                // if object does not already contain the join, then add it as an empty array
-                if(!isSet($results[$result->getPrimaryKeyValue()]->{$join->getName()})){
-                    $results[$result->getPrimaryKeyValue()]->{$join->getName()} = array();
-                }
-                // if an object with the joins primary key does not exist, then added it to the join
-                if(!empty($joinResult) && empty($results[$result->getPrimaryKeyValue()]->{$join->getName()}[$joinResult->getPrimaryKeyValue()])){
-                    $results[$result->getPrimaryKeyValue()]->{$join->getName()}[$joinResult->getPrimaryKeyValue()] = $joinResult;
-                } else if (!empty($joinResult) && !empty($results[$result->getPrimaryKeyValue()]->{$join->getName()}[$joinResult->getPrimaryKeyValue()])){
-                    $originalObject = $results[$result->getPrimaryKeyValue()]->{$join->getName()}[$joinResult->getPrimaryKeyValue()];
-                    $resultsObj = $joinResult;
-                    $results[$result->getPrimaryKeyValue()]->{$join->getName()}[$joinResult->getPrimaryKeyValue()] = $this->merge($originalObject, $resultsObj);
-                }
-            }
+        if ($this->action === 'selecting') {
+            $results = \obray\core\PerformanceProfile::measure('hydration', fn() =>
+                (new ResultHydrator())->hydrate($data[0], $this->class, $this->from->getJoins()));
         }
-
-        // remove the primary keys as keys from the results
-        $this->removePrimaryKeys($results);
 
         $this->sql = '';
         // if return only a single row, then return the first row of our results
@@ -440,103 +406,6 @@ class Statement
         // return the results
         if(is_array($results)) array_values($results);
         return $results;
-    }
-
-    /**
-     * merge
-     * 
-     * Merge two objects together.  Used to merge the results of a join.
-     * 
-     * @param mixed $obj1 
-     * @param mixed $obj2 
-     * @return mixed 
-     */
-
-    private function merge($obj1, $obj2): mixed
-    {
-        $merged = clone $obj1;
-        forEach($obj2 as $key => $value){
-            if(is_array($value)){
-                $merged->{$key} = $this->mergeArray($merged->{$key}, $value);
-            } else if (is_object($value)){
-                $merged->{$key} = $this->merge($merged->{$key}, $value);
-            }
-        }
-        return $merged;
-    }
-
-    /**
-     * mergeArray
-     * 
-     * Merge two arrays together.  Used to merge the results of a join.
-     * 
-     * @param mixed $arr1 
-     * @param mixed $arr2 
-     * @return array
-     */
-
-    private function mergeArray($arr1, $arr2): array
-    {
-        $merged = $arr1;
-        forEach($arr2 as $key => $value){
-            if(array_key_exists($key, $merged)){
-                $merged[$key] = $this->merge($merged[$key], $value);    
-            } else {
-                $merged[$key] = $value;
-            }
-        }
-        return $merged;
-    }
-
-    /**
-     * populateJoin
-     * 
-     * Populate a join object with data from a row.
-     * 
-     * @param mixed $row 
-     * @param mixed $join 
-     * @return null|object 
-     */
-
-    private function populateJoin($row, $join): null|object
-    {
-        $objProps = [];
-        forEach($row as $n => $prop){
-            if(strpos($n, $join->getName().'_') === 0){
-                $objProps[substr($n, strlen($join->getName().'_'))] = $prop;
-            }
-        }
-        $joinResult = new ($join->getToClass())(...$objProps);
-        if($joinResult->empty()){
-            $joinResult = null;
-            return $joinResult;
-        } 
-        forEach($join->joins as $j){
-            $result = $this->populateJoin($row, $j);
-            if(empty($result)) continue;
-            if(empty($joinResult->{$j->getName()})) $joinResult->{$j->getName()} = [];
-            if(empty($joinResult->{$j->getName()}[$result->getPrimaryKeyValue()])){
-                $joinResult->{$j->getName()}[$result->getPrimaryKeyValue()] = $result;
-            }
-        }
-        return $joinResult;
-    }
-
-    /**
-     * removePrimaryKeys
-     * 
-     * Remove the primary keys from the results array.
-     * 
-     * @param mixed $results 
-     * @return void 
-     */
-
-    private function removePrimaryKeys(mixed &$results)
-    {
-        if(is_array($results)) $results = array_values($results);
-        forEach($results as $key => &$value){
-            if(is_array($value) || is_object($value)) $this->removePrimaryKeys($value);
-        }
     }
 
     /**

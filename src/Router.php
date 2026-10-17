@@ -573,7 +573,8 @@ Class Router
 
     private function encodeResponse(EncoderInterface $encoder, $data)
     {
-        return self::invokeEncoder($encoder, $data, $this->start_time, $this->debug_mode);
+        return PerformanceProfile::measure('encoding', fn() =>
+            self::invokeEncoder($encoder, $data, $this->start_time, $this->debug_mode));
     }
 
     private static function invokeEncoder(EncoderInterface $encoder, $data, $startTime, $debugMode = false)

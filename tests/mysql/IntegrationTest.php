@@ -67,6 +67,10 @@ try {
     $errorMode = $connection->getAttribute(PDO::ATTR_ERRMODE);
     try {
         $connection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+        $prepareCount = fn() => (int)$admin->query('SHOW GLOBAL STATUS LIKE "Com_stmt_prepare"')->fetch(PDO::FETCH_NUM)[1];
+        $beforePrepares = $prepareCount();
+        $db->run('SELECT 1');
+        check_mysql($prepareCount() - $beforePrepares === 1, 'A native single query must prepare exactly once.');
         foreach ([PDO::ERRMODE_EXCEPTION, PDO::ERRMODE_SILENT] as $mode) {
             $connection->setAttribute(PDO::ATTR_ERRMODE, $mode);
             $error = expect_mysql_failure(fn() => $db->run('SELEC 1'), \obray\data\exceptions\SqlFailedToLoad::class, 'Native prepare failure must have a useful load exception.');
@@ -138,6 +142,12 @@ try {
     check_mysql(count($joined) === 1 && $joined[0]->product_id === 2 && $joined[0]->category[0]->category_id === 2, 'Joined filtering and hydration must preserve independent bindings.');
     $left = $querier->select(Product::class)->leftJoin('category', Category::class)->where(['product_id' => 6])->firstOrNull();
     check_mysql($left instanceof Product && $left->category === [], 'Left joins must preserve records with no related row.');
+    \obray\core\PerformanceProfile::start();
+    $querier->select(Product::class)->where(['product_id' => 2])->run();
+    $profile = \obray\core\PerformanceProfile::stop();
+    check_mysql($profile['statements_executed'] === 1.0 && $profile['rows_fetched'] === 1.0
+        && $profile['models_hydrated'] === 1.0, 'Profile counts must agree with actual query results.');
+    check_mysql(isset($profile['sql_ms'], $profile['fetch_ms'], $profile['hydration_ms']), 'Profile separates SQL, fetch, and hydration.');
     $nested = $querier->select(Product::class)->where(['product_id' => [new AndOp([new GT(1), new LT(3)]), new AndOp([new GT(5), new LT(7)])]])->orderBy('product_id')->run();
     check_mysql(array_map(fn($row) => $row->product_id, $nested) === [2, 6], 'Nested ranges must retain their own values.');
     check_mysql($querier->select(Product::class)->where(['product_id' => []])->run() === [], 'An empty OR filter must return no rows.');

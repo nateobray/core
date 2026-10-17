@@ -39,6 +39,13 @@ class LoadingDB extends DBConn {
 class InspectLoadingStatement extends DBStatement {
     public function queries(): array { return array_values($this->queryStrings); }
 }
+class CountingLoadingPDO extends PDO {
+    public int $prepares = 0;
+    public function prepare(string $query, array $options = []): PDOStatement|false {
+        $this->prepares++;
+        return parent::prepare($query, $options);
+    }
+}
 
 $offline = new LoadingDB();
 foreach ([null, false, 123, new stdClass()] as $input) {
@@ -104,6 +111,24 @@ $payload = (new ErrorEncoder())->encode($error, microtime(true));
 load_check(!str_contains(json_encode($payload), 'private-host') && !str_contains($error->getMessage(), 'SELECT'), 'Public error messages must not include driver details or SQL.');
 
 if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
+    $counting = new CountingLoadingPDO('sqlite::memory:');
+    $cached = (new DBStatement(new LoadingDB($counting)))->loadSql('SELECT :value AS value');
+    $value = 'first';
+    $cached->bindParam(':value', $value);
+    $cached->execute();
+    load_check($counting->prepares === 1, 'Single SQL must be prepared only once across load and execute.');
+    $cached->execute();
+    load_check($counting->prepares === 1, 'Reexecution should reuse preparation.');
+    // SQLite SELECT rowCount is zero; inspect the actual cursor instead of fetchResults.
+    $reflection = new ReflectionProperty(DBStatement::class, 'pdoStatements');
+    $reflection->setAccessible(true);
+    load_check($reflection->getValue($cached)[0]->fetchColumn() === 'first', 'Reused statement must preserve its bindings.');
+    $cached->loadSql('SELECT :value AS reloaded');
+    $cached->execute();
+    load_check($counting->prepares === 2, 'Reload must discard the old prepared statement.');
+    load_failure(fn() => $cached->loadSql('SELEC 1'), SqlStringFailedToLoad::class);
+    load_failure(fn() => $cached->execute(), SqlFailedToLoad::class);
+
     foreach ([PDO::ERRMODE_EXCEPTION, PDO::ERRMODE_SILENT] as $mode) {
         $pdo = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => $mode]);
         $db = new LoadingDB($pdo);
