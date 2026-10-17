@@ -16,12 +16,16 @@ class DBO implements JsonSerializable
 
     public function __construct(...$params)
     {
+        // Cache constant metadata only; every column still gets a fresh wrapper.
+        static $defaults = [];
         $columns = Table::getColumns(static::class);
         forEach($columns as $index => $column){
             // if neither property exists get default value
             if(!array_key_exists($column->propertyName, $params) && !array_key_exists($index, $params)) {
-                $reflection = new \ReflectionClass($column->propertyClass);
-                $value = $reflection->getConstant('DEFAULT');
+                if (!array_key_exists($column->propertyClass, $defaults)) {
+                    $defaults[$column->propertyClass] = (new \ReflectionClass($column->propertyClass))->getConstant('DEFAULT');
+                }
+                $value = $defaults[$column->propertyClass];
             } 
             // if named assoc array was passed get that way
             if(array_key_exists($column->propertyName, $params)) $value = $params[$column->propertyName];    
