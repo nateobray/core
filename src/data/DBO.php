@@ -134,9 +134,6 @@ class DBO implements JsonSerializable
     public function jsonSerialize(): mixed
     {
         $obj = new \stdClass();
-        $reflection = new \ReflectionClass($this);
-        $properties = $reflection->getProperties();
-        
         forEach($this as $key => $prop){
             if(!empty($this->encodeNot) && in_array($key, $this->encodeNot)) continue;
 
@@ -155,9 +152,6 @@ class DBO implements JsonSerializable
     public function toArray(): array
     {
         $obj = [];
-        $reflection = new \ReflectionClass($this);
-        $properties = $reflection->getProperties();
-        
         forEach($this as $key => $prop){
             if(!empty($this->encodeNot) && in_array($key, $this->encodeNot)) continue;
 
