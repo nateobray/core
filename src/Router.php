@@ -320,6 +320,14 @@ Class Router
 		        return true;
             }
         }
+        // Command-style HTTP controllers may complete without a response property.
+        // Use the application's data encoder, never an encoder left by a prior route.
+        if (isset($this->encodersByClassProperty['data'])) {
+            $config = $this->encodersByClassProperty['data'];
+            $this->encoder = $config['encoder'];
+            $this->content_type = $config['contentType'] ?? $this->encoder->getContentType();
+            return true;
+        }
 	    return false;
     }
 

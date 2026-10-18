@@ -82,6 +82,11 @@ property it encodes: `data` for JSON, `html` for HTML, and so on. The router sel
 the first matching public property. Controller methods populate these properties;
 their return values are not used as response bodies.
 
+HTTP controllers that complete without an initialized public response property
+fall back to the encoder registered for `data`. With the standard JSON encoder,
+this produces a runtime-only JSON response. Explicit response properties still
+take priority; exceptions and permission failures still use the error encoder.
+
 JSON preserves strings, including leading-zero identifiers. PHP numbers remain
 numbers. Legacy numeric-string conversion is available explicitly with
 `new JSONEncoder(true)`.

@@ -36,6 +36,19 @@ namespace controllers {
         public function get(): void { $this->data = "\xB1"; }
     }
     class BoundaryMissingEncoder {
+        public static int $calls = 0;
+        public function get(): void { self::$calls++; }
+    }
+    class BoundaryUninitializedData {
+        public array $data;
+        public function get(): void {}
+    }
+    class BoundaryPrivateData {
+        private array $data = ['secret' => 'must not leak'];
+        public function get(): void {}
+    }
+    class BoundaryHtml {
+        public string $html = 'explicit html';
         public function get(): void {}
     }
     class BoundaryRequestObject {
@@ -124,6 +137,26 @@ namespace {
     $router->route('/boundaryRequestObject', ['request' => 'spoofed'], true);
     boundary_assert(json_decode($router->getLastResponse()['body'], true)['data'] === 'GET', 'Request objects must come from the server, including nullable defaulted parameters.');
     $router->route('/boundaryMissingEncoder', [], true);
-    boundary_assert($router->getLastResponse()['code'] === 500, 'Router reuse must not inherit the preceding encoder.');
+    boundary_assert($router->getLastResponse()['code'] === 200, 'Completed command controllers must use the registered data encoder.');
+    boundary_assert(\controllers\BoundaryMissingEncoder::$calls === 1, 'A command executes exactly once.');
+    foreach (['boundaryUninitializedData', 'boundaryPrivateData'] as $path) {
+        $router->route('/' . $path, [], true);
+        $response = $router->getLastResponse();
+        $body = json_decode($response['body'], true);
+        boundary_assert($response['code'] === 200 && isset($body['runtime']) && !array_key_exists('data', $body), 'Empty response fallback must not read uninitialized or private data.');
+    }
+    $router->addEncoder(\obray\core\encoders\HTMLEncoder::class, 'html', 'text/html');
+    $router->route('/boundaryHtml', [], true);
+    boundary_assert($router->getLastResponse()['contentType'] === 'text/html', 'Explicit encoders take priority.');
+    $router->route('/boundaryMissingEncoder', [], true);
+    boundary_assert($router->getLastResponse()['contentType'] === 'application/json', 'Fallback must not inherit the prior HTML encoder.');
+    $deny = new DenyBoundary();
+    $router->setCheckPermissionsHandler($deny);
+    $before = \controllers\BoundaryMissingEncoder::$calls;
+    $router->route('/boundaryMissingEncoder?TENANT=test', [], true);
+    boundary_assert($router->getLastResponse()['code'] === 403 && \controllers\BoundaryMissingEncoder::$calls === $before, 'Fallback must not bypass authorization or execute denied commands.');
+    $unconfigured = new Router(new Factory(), new Invoker());
+    $unconfigured->route('/boundaryMissingEncoder', [], true);
+    boundary_assert($unconfigured->getLastResponse()['code'] === 500, 'Without a registered data encoder, configuration errors remain failures.');
     echo "Request boundary tests passed\n";
 }
